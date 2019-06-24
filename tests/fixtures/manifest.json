@@ -1,0 +1,7 @@
+{
+  "foo.css": "/foo.abcde.css",
+  "no-min.css": "/foo.css",
+  "bar-hash.css": "/bar.abcde.css",
+  "bar.css": "/bar.min.css",
+  "meh.css": "/meh.css"
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<ruleset>
+
+    <file>./src</file>
+    <file>./tests/src</file>
+    <file>./tests/unit</file>
+
+    <arg value="sp"/>
+
+    <rule ref="Inpsyde" />
+
+    <rule ref="Inpsyde.CodeQuality.Psr4">
+        <properties>
+            <property
+                    name="psr4"
+                    type="array"
+                    value="Brain\Assets=>src,Brain\Assets\Tests=>tests/src,Brain\Assets\Tests\Unit=>tests/unit"/>
+        </properties>
+    </rule>
+
+    <rule ref="Inpsyde.CodeQuality.ElementNameMinimalLength">
+        <properties>
+            <property name="allowedShortNames" type="array" value="js,is,i,ok,id" />
+        </properties>
+    </rule>
+
+</ruleset>
+

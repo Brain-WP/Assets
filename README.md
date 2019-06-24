@@ -1,18 +1,14 @@
 # Brain Assets
 
-> WordPress assets helpers
-
----
 [![license](https://img.shields.io/packagist/l/brain/assets.svg?style=flat-square)](http://opensource.org/licenses/MIT)
 [![travis-ci status](https://img.shields.io/travis/Brain-WP/Assets.svg?style=flat-square)](https://travis-ci.org/Brain-WP/Assets)
 [![codecov.io](https://img.shields.io/codecov/c/github/Brain-WP/Assets.svg?style=flat-square)](http://codecov.io/github/Brain-WP/Assets?branch=master)
 [![packagist](https://img.shields.io/packagist/v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
 [![PHP version requirement](https://img.shields.io/packagist/php-v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
----
+
+WordPress assets helpers.
 
 ## Quick start
-
-
 
 This is a Composer package that can be used in WordPress plugins, themes and libraries to deal with assets URLs, and style / scripts enqueueing.
 
@@ -49,8 +45,6 @@ After an instance of `Assets` has been obtained, there are two groups of methods
 
 - methods to *obtain URLs* of assets
 - methods to *enqueue* scripts and styles
-
-
 
 ### Obtain URLs
 
@@ -89,8 +83,6 @@ Note how for JS and CSS files it is not required to pass the file extension.
 
 Also note that type-specific methods can be used even when all assets are stored in same folder, by just calling them on the instance of `Assets` obtained without any of the `with...Folder()` method.
 
-
-
 ### Enqueueing assets
 
 The second set of methods of the `Assets` class can be used to enqueue styles and script and also act on the enqueue output. For example:
@@ -127,19 +119,13 @@ Moreover:
 - we can pass localization data to the scripts;
 - we can add inline code pre-pending or appending it to the tag (for CSS only "append" is supported).
 
-
-
 ### Proper Hook
 
 WordPress requires that assets are enqueued using a proper hook (e. g. `wp_enqueue_scripts` or `admin_enqueue_scrips`) and **that is also true** when calling `Assets::enqueueStyle()` and `Assets::enqueueScript()` methods.
 
 An instance of `Assets` can be created early with no issues, but the actual enqueueing must be done using proper hook.
 
-
-
 ## A deeper look
-
-
 
 ### What and why
 
@@ -166,8 +152,6 @@ Another issue with "register" and "enqueue" style/scripts functions is that afte
 Some modifications can be done via filters, some others needs to be done via `add_data` method on `WP_Dependency` class.
 
 So there is no simple, nor unified way to deal with this kind of modifications.
-
-
 
 ### Setting up `Assets ` class behavior
 

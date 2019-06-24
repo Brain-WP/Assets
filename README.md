@@ -2,6 +2,14 @@
 
 > WordPress assets helpers
 
+---
+[![license](https://img.shields.io/packagist/l/brain/assets.svg?style=flat-square)](http://opensource.org/licenses/MIT)
+[![travis-ci status](https://img.shields.io/travis/Brain-WP/Assets.svg?style=flat-square)](https://travis-ci.org/Brain-WP/Assets)
+[![codecov.io](https://img.shields.io/codecov/c/github/Brain-WP/Assets.svg?style=flat-square)](http://codecov.io/github/Brain-WP/Assets?branch=master)
+[![packagist](https://img.shields.io/packagist/v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
+[![PHP version requirement](https://img.shields.io/packagist/php-v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
+---
+
 ## Quick start
 
 

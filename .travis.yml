@@ -5,6 +5,10 @@ php:
   - "7.3"
   - "nightly"
 
+matrix:
+  allow_failures:
+    - php: "nightly"
+
 before_script:
   - travis_retry composer self-update
   - travis_retry composer update --no-interaction --prefer-source  --classmap-authoritative --ignore-platform-reqs

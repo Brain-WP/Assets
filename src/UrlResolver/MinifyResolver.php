@@ -1,36 +1,33 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\UrlResolver;
 
 class MinifyResolver
 {
     /**
-     * @var bool
-     */
-    private $shouldMinify;
-
-    /**
      * @return MinifyResolver
      */
-    public static function createEnabled(): MinifyResolver
+    final public static function new(): MinifyResolver
     {
-        return new static(true);
+        return new static();
     }
 
     /**
-     * @return MinifyResolver
      */
-    public static function createDisabled(): MinifyResolver
+    final protected function __construct()
     {
-        return new static(false);
-    }
-
-    /**
-     * @param bool $shouldMinify
-     */
-    private function __construct(bool $shouldMinify)
-    {
-        $this->shouldMinify = $shouldMinify;
     }
 
     /**
@@ -39,26 +36,14 @@ class MinifyResolver
      */
     public function resolve(string $path): ?string
     {
-        if (!$this->shouldMinify) {
-            return null;
-        }
-
         if (!preg_match("~(?P<file>.+?)(?P<min>\.min)?\.(?P<ext>js|css)\$~i", $path, $matches)) {
             return null;
         }
 
-        if ($matches['min'] ?? null) {
+        if (($matches['min'] ?? '') !== '') {
             return null;
         }
 
         return "{$matches['file']}.min.{$matches['ext']}";
-    }
-
-    /**
-     * @return bool
-     */
-    public function isEnabled(): bool
-    {
-        return $this->shouldMinify;
     }
 }

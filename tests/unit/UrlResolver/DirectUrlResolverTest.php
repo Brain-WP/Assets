@@ -1,8 +1,19 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\UrlResolver;
 
-use Brain\Assets\Context\WpContext;
 use Brain\Assets\Tests\TestCase;
 use Brain\Assets\UrlResolver\DirectUrlResolver;
 use Brain\Assets\UrlResolver\MinifyResolver;
@@ -10,175 +21,143 @@ use Brain\Assets\UrlResolver\MinifyResolver;
 class DirectUrlResolverTest extends TestCase
 {
     /**
-     * @var string
+     * @test
      */
-    private $basePath;
+    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifier(): void
+    {
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('foo.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/foo.min.css", $resolved);
+    }
 
     /**
-     * @var string
+     * @return void
      */
-    private $altBasePath;
-
-    protected function setUp(): void
+    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifierMinNotFound(): void
     {
-        parent::setUp();
-        $this->basePath = getenv('FIXTURES_DIR');
-        $this->altBasePath = getenv('FIXTURES_DIR') . '/alt';
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('bar.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/bar.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifier()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithoutAltAndDisabledMinifier(): void
     {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('foo.css', null);
 
-        $resolved = $resolver->resolve('foo.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifierMinNotFound()
+    /**
+     * @test
+     */
+    public function testResolveMinifiedPathWithoutAltAndEnabledMinifier(): void
     {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::new());
 
-        $resolved = $resolver->resolve('bar.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/bar.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.min.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithoutAltAndDisabledMinifier()
+    /**
+     * @test
+     */
+    public function testResolveMinifiedPathWithoutAltAndEnabledMinifierMinNotFound(): void
     {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::new());
 
-        $resolved = $resolver->resolve('foo.css', MinifyResolver::createDisabled());
-
-        static::assertSame('https://example.com/assets/foo.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.min.css", $resolved);
     }
 
-    public function testResolveMinifiedPathWithoutAltAndEnabledMinifier()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithAltAndEnabledMinifierPathNotFoundInMainDir(): void
     {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('bar.css', MinifyResolver::new());
 
-        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $resolved);
+        static::assertSame("{$this->altBaseUrl}/bar.min.css", $resolved);
     }
 
-    public function testResolveMinifiedPathWithoutAltAndEnabledMinifierMinNotFound()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithAltAndEnabledMinifierPathFoundInMainDir(): void
     {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('foo.css', MinifyResolver::new());
 
-        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.min.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithAltAndEnabledMinifierPathNotFoundInMainDir()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithAltAndDisabledMinifierPathFoundInMainDir(): void
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('foo.css', null);
 
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('bar.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/alt/assets/bar.min.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithAltAndEnabledMinifierPathFoundInMainDir()
+    /**
+     * @test
+     */
+    public function testResolveMinifiedPathWithAltAndEnabledMinifierPathFoundInMainDir(): void
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::new());
 
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('foo.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.min.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithAltAndDisabledMinifierPathFoundInMainDir()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithAltAndNoMinifierPathNotFoundInMainDir(): void
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('bar.css', null);
 
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('foo.css', MinifyResolver::createDisabled());
-
-        static::assertSame('https://example.com/assets/foo.css', $resolved);
+        static::assertSame("{$this->altBaseUrl}/bar.css", $resolved);
     }
 
-    public function testResolveMinifiedPathWithAltAndEnabledMinifierPathFoundInMainDir()
+    /**
+     * @test
+     */
+    public function testResolveMinifiedPathWithAltAndEnabledMinifierPathNotFoundAnywhere(): void
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
+        $resolver = $this->factoryUrlResolver(useAlt: true);
+        $resolved = $resolver->resolve('xxx.css', MinifyResolver::new());
 
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('foo.min.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $resolved);
+        static::assertSame("{$this->baseUrl}/xxx.css", $resolved);
     }
 
-    public function testResolveNotMinifiedPathWithAltAndDisabledMinifierPathNotFoundInMainDir()
+    /**
+     * @test
+     */
+    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifierAndQuery(): void
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
+        $resolver = $this->factoryUrlResolver(useAlt: false);
+        $resolved = $resolver->resolve('foo.css?v=123', MinifyResolver::new());
 
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('bar.css', MinifyResolver::createDisabled());
-
-        static::assertSame('https://example.com/alt/assets/bar.css', $resolved);
+        static::assertSame("{$this->baseUrl}/foo.min.css?v=123", $resolved);
     }
 
-    public function testResolveMinifiedPathWithAltAndEnabledMinifierPathNotFoundAnywhere()
+    /**
+     * @param bool $useAlt
+     * @return DirectUrlResolver
+     */
+    private function factoryUrlResolver(bool $useAlt): DirectUrlResolver
     {
-        $context = new WpContext(
-            $this->basePath,
-            'https://example.com/assets',
-            $this->altBasePath,
-            'https://example.com/alt/assets'
-        );
-
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('xxx.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/xxx.css', $resolved);
-    }
-
-    public function testResolveNotMinifiedPathWithoutAltAndEnabledMinifierAndQuery()
-    {
-        $context = new WpContext($this->basePath, 'https://example.com/assets');
-        $resolver = new DirectUrlResolver($context);
-
-        $resolved = $resolver->resolve('foo.css?v=123', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css?v=123', $resolved);
+        return DirectUrlResolver::new($this->factoryContext($useAlt, null));
     }
 }

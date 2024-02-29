@@ -1,99 +1,115 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\Version;
 
-use Brain\Assets\Context\WpContext;
 use Brain\Assets\Tests\TestCase;
 use Brain\Assets\Version\LastModifiedVersion;
 
 class LastModifiedVersionTest extends TestCase
 {
-    private const URL = 'https://example.com/assets/';
-    private const ALT_URL = 'https://example.com/alt/assets/';
-
-    public function testCalculateNoAltNoDebugFileExist()
+    /**
+     * @test
+     */
+    public function testCalculateNoAltNoDebugFileExist(): void
     {
-        $version = $this->createVersion(false, false);
+        $version = $this->factoryLastModifiedVersion(useAlt: false, debug: false);
 
-        $ver = $version->calculate(self::URL . 'foo.css');
+        $actual = $version->calculate("{$this->baseUrl}/foo.css");
 
-        static::assertTrue(is_numeric($ver));
-        static::assertTrue((int)$ver > mktime(0, 0, 0, 1, 1, 1970));
-    }
-
-    public function testCalculateNoAltNoDebugFileNotExist()
-    {
-        $version = $this->createVersion(false, false);
-
-        $ver = $version->calculate('https://example.com/assets/xxx.css');
-
-        static::assertNull($ver);
-    }
-
-    public function testCalculateAltNoDebugFileExist()
-    {
-        $version = $this->createVersion(true, false);
-        $ver = $version->calculate(self::ALT_URL . 'bar.css');
-
-        static::assertTrue(is_numeric($ver));
-        static::assertTrue((int)$ver > mktime(0, 0, 0, 1, 1, 1970));
-    }
-
-    public function testCalculateAltNoDebugFileNotExist()
-    {
-        $version = $this->createVersion(true, false);
-
-        $ver = $version->calculate(self::ALT_URL . 'xxx.css');
-
-        static::assertNull($ver);
-    }
-
-    public function testCalculateNoAltNoDebugFileExistWrongUrl()
-    {
-        $version = $this->createVersion(false, false);
-
-        $ver = $version->calculate('https://gmazzap.me/foo.css');
-
-        static::assertNull($ver);
-    }
-
-    public function testCalculateNoAltDebugFileExist()
-    {
-        $version = $this->createVersion(false, true);
-
-        $time = time();
-        $ver = $version->calculate(self::URL . 'foo.css');
-
-        static::assertTrue(is_numeric($ver));
-        static::assertTrue(($time - (int)$ver) < 5);
-    }
-
-    public function testCalculateNoAltDebugFileNotExist()
-    {
-        $version = $this->createVersion(false, true);
-
-        $time = time();
-        $ver = $version->calculate(self::URL . 'xxx.css');
-
-        static::assertTrue(is_numeric($ver));
-        static::assertTrue(($time - (int)$ver) < 5);
+        $this->assertTimestamp($actual);
     }
 
     /**
-     * @param bool $alt
+     * @test
+     */
+    public function testCalculateNoAltNoDebugFileNotExist(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: false, debug: false);
+
+        $actual = $version->calculate("{$this->baseUrl}/assets/xxx.css");
+
+        static::assertNull($actual);
+    }
+
+    /**
+     * @test
+     */
+    public function testCalculateAltNoDebugFileExist(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: true, debug: false);
+
+        $actual = $version->calculate("{$this->altBaseUrl}/bar.css");
+
+        $this->assertTimestamp($actual);
+    }
+
+    /**
+     * @test
+     */
+    public function testCalculateAltNoDebugFileNotExist(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: true, debug: false);
+
+        $actual = $version->calculate("{$this->altBaseUrl}/xxx.css");
+
+        static::assertNull($actual);
+    }
+
+    /**
+     * @test
+     */
+    public function testCalculateNoAltNoDebugFileExistWrongUrl(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: false, debug: false);
+
+        $actual = $version->calculate('https://gmazzap.me/foo.css');
+
+        static::assertNull($actual);
+    }
+
+    /**
+     * @test
+     */
+    public function testCalculateNoAltDebugFileExist(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: false, debug: true);
+
+        $actual = $version->calculate("{$this->baseUrl}/foo.css");
+
+        $this->assertTimestamp($actual);
+    }
+
+    /**
+     * @test
+     */
+    public function testCalculateNoAltDebugFileNotExist(): void
+    {
+        $version = $this->factoryLastModifiedVersion(useAlt: false, debug: true);
+
+        $actual = $version->calculate("{$this->baseUrl}/xxx.css");
+
+        $this->assertNull($actual);
+    }
+
+    /**
+     * @param bool $useAlt
      * @param bool $debug
      * @return LastModifiedVersion
      */
-    private function createVersion(bool $alt = false, bool $debug = false): LastModifiedVersion
+    private function factoryLastModifiedVersion(bool $useAlt, bool $debug): LastModifiedVersion
     {
-        $args = [getenv('FIXTURES_DIR'), self::URL];
-        if ($alt) {
-            $args[] = getenv('FIXTURES_DIR') . '/alt';
-            $args[] = self::ALT_URL;
-        }
-
-        $context = $debug ? WpContext::createWithDebug(...$args) : WpContext::createWithNoDebug(...$args);
-
-        return new LastModifiedVersion($context);
+        return LastModifiedVersion::new($this->factoryPathFinder($useAlt, $debug));
     }
 }

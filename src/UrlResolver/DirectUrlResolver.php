@@ -1,56 +1,43 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+declare(strict_types=1);
 
 namespace Brain\Assets\UrlResolver;
 
 use Brain\Assets\Context\Context;
 
-final class DirectUrlResolver implements UrlResolver
+class DirectUrlResolver implements UrlResolver
 {
     /**
-     * @var Context
+     * @param Context $context
+     * @return static
      */
-    private $context;
+    public static function new(Context $context): static
+    {
+        return new static($context);
+    }
 
     /**
      * @param Context $context
      */
-    public function __construct(Context $context)
+    final protected function __construct(private Context $context)
     {
-        $this->context = $context;
     }
 
     /**
      * @param string $relative
-     * @param MinifyResolver $minifyResolver
+     * @param MinifyResolver|null $minifyResolver
      * @return string
      */
-    public function resolve(string $relative, MinifyResolver $minifyResolver): string
+    public function resolve(string $relative, ?MinifyResolver $minifyResolver): string
     {
-        $baseUrl = $this->context->baseUrl();
-        $basePath = $this->context->basePath();
-
         $urlData = parse_url($relative);
-        $path = trim((string)($urlData['path'] ?? ''), '/');
-        $query = (string)($urlData['query'] ?? '');
+        $path = trim(($urlData['path'] ?? ''), '/');
 
-        $minifiedPath = $minifyResolver->resolve($path);
-
-        $hasMin = (bool)$minifiedPath;
-        $hasPath =  $path && ($path !== $minifiedPath);
-
-        $candidates = $hasMin ? [[$minifiedPath, $basePath, $baseUrl]] : [];
-        $hasPath and $candidates[] = [$path, $basePath, $baseUrl];
-
-        if (($hasMin || $hasPath) && $this->context->hasAlternative()) {
-            $altBasePath = $this->context->altBasePath();
-            $altBaseUrl = $this->context->altBaseUrl();
-            $hasMin and $candidates[] = [$minifiedPath, $altBasePath, $altBaseUrl];
-            $hasPath and $candidates[] = [$path, $altBasePath, $altBaseUrl];
-        }
+        $candidates = $this->findCandidates($path, $minifyResolver?->resolve($path));
 
         $fullUrl = '';
-
-        /** @psalm-suppress PossiblyNullOperand */
+        /** @var list<list{string, string, string}> $candidates */
         foreach ($candidates as [$candidatePath, $pathBasePath, $pathBaseUrl]) {
             if (file_exists($pathBasePath . $candidatePath)) {
                 $fullUrl = $pathBaseUrl . $candidatePath;
@@ -58,25 +45,44 @@ final class DirectUrlResolver implements UrlResolver
             }
         }
 
-        if ($fullUrl && $query) {
-            $fullUrl .= "?{$query}";
+        $baseUrl = $this->context->baseUrl();
+        if (($fullUrl === '') && ($relative !== '')) {
+            $fullUrl = $baseUrl . ltrim($relative, '/');
         }
 
-        if (!$fullUrl && $baseUrl && $relative) {
-            $fullUrl = $baseUrl . ltrim($relative, '/');
+        $query = $urlData['query'] ?? '';
+        if (($fullUrl !== '') && ($query !== '')) {
+            $fullUrl .= "?{$query}";
         }
 
         return $fullUrl;
     }
 
     /**
-     * @param Context $context
-     * @return UrlResolver
+     * @param string $path
+     * @param string|null $minifiedPath
+     * @return list<list{string, string, string}>
      */
-    public function withContext(Context $context): UrlResolver
+    private function findCandidates(string $path, ?string $minifiedPath): array
     {
-        $this->context = $context;
+        $baseUrl = $this->context->baseUrl();
+        $basePath = $this->context->basePath();
 
-        return $this;
+        $hasMin = ($minifiedPath !== '') && ($minifiedPath !== null);
+        $hasPath = ($path !== '') && ($path !== $minifiedPath);
+
+        $candidates = $hasMin ? [[$minifiedPath, $basePath, $baseUrl]] : [];
+        $hasPath and $candidates[] = [$path, $basePath, $baseUrl];
+
+        if (($hasMin || $hasPath) && $this->context->hasAlternative()) {
+            $altBasePath = $this->context->altBasePath() ?? '';
+            $altBaseUrl = $this->context->altBaseUrl() ?? '';
+            if (($altBasePath !== '') && ($altBaseUrl !== '')) {
+                $hasMin and $candidates[] = [$minifiedPath, $altBasePath, $altBaseUrl];
+                $hasPath and $candidates[] = [$path, $altBasePath, $altBaseUrl];
+            }
+        }
+        /** @var list<list{string, string, string}> $candidates */
+        return $candidates;
     }
 }

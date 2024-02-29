@@ -1,95 +1,57 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Version;
 
 use Brain\Assets\Context\Context;
+use Brain\Assets\MatchSchemeTrait;
+use Brain\Assets\Utils\PathFinder;
 
-final class LastModifiedVersion implements Version
+class LastModifiedVersion implements Version
 {
     /**
-     * @var array<string, array{0:string, 1:int}>
+     * @param PathFinder $pathFinder
+     * @param Context $context
+     * @return static
      */
-    private $bases = [];
+    public static function new(PathFinder $pathFinder): static
+    {
+        return new static($pathFinder);
+    }
 
     /**
-     * @var bool
-     */
-    private $debug = false;
-
-    /**
+     * @param PathFinder $pathFinder
      * @param Context $context
      */
-    public function __construct(Context $context)
-    {
-        if ($context->isDebug()) {
-            $this->debug = true;
-
-            return;
-        }
-
-        $baseUrl = (string)$context->baseUrl();
-        $basePath = (string)$context->basePath();
-
-        $this->bases[$baseUrl] = [$basePath, strlen($baseUrl)];
-        if ($context->hasAlternative()) {
-            $altBaseUrl = (string)$context->altBaseUrl();
-            $altBasePath = (string)$context->altBasePath();
-            $this->bases[$altBaseUrl] = [$altBasePath, strlen($altBaseUrl)];
-        }
+    final protected function __construct(
+        private PathFinder $pathFinder
+    ) {
     }
 
     /**
      * @param string $url
-     * @return string
+     * @return string|null
      */
     public function calculate(string $url): ?string
     {
-        if (!$this->bases || $this->debug) {
-            return $this->debug ? (string)time() : null;
-        }
-
-        $relativePath = null;
-        $fullPath = null;
-
-        foreach ($this->bases as $baseUrl => [$urlBasePath, $baseUrlLength]) {
-            if (substr($this->matchScheme($baseUrl, $url), 0, $baseUrlLength) === $baseUrl) {
-                $fullPath = $urlBasePath . (string)substr($url, $baseUrlLength);
-                break;
-            }
-        }
-
-        if (!$fullPath) {
+        $fullPath = $this->pathFinder->findPath($url);
+        if ($fullPath === null) {
             return null;
         }
 
-        $content = @filemtime($fullPath);
+        $lastModified = @filemtime($fullPath);
 
-        return $content ? (string)$content : null;
-    }
-
-    /**
-     * @param string $sourceUrl
-     * @param string $targetUrl
-     * @return string
-     */
-    private function matchScheme(string $sourceUrl, string $targetUrl): string
-    {
-        $leftScheme = parse_url($sourceUrl, PHP_URL_SCHEME);
-        $rightScheme = parse_url($targetUrl, PHP_URL_SCHEME);
-
-        return $leftScheme !== $rightScheme
-            ? (string)set_url_scheme($targetUrl, $leftScheme)
-            : $targetUrl;
-    }
-
-    /**
-     * @param Context $context
-     * @return Version
-     */
-    public function withContext(Context $context): Version
-    {
-        $this->debug = $context->isDebug();
-
-        return $this;
+        return ($lastModified !== false) ? (string) $lastModified : null;
     }
 }

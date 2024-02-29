@@ -1,66 +1,119 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\UrlResolver;
 
-use Brain\Assets\Context\Context;
-
 class ManifestUrlResolver implements UrlResolver
 {
-    /**
-     * @var UrlResolver
-     */
-    private $direct;
-
-    /**
-     * @var array
-     */
-    private $paths = [];
+    private array $paths = [];
 
     /**
      * @param DirectUrlResolver $direct
      * @param string $manifestPath
+     * @return static
      */
-    public function __construct(DirectUrlResolver $direct, string $manifestPath)
+    public static function new(DirectUrlResolver $direct, string $manifestPath): static
     {
-        $this->direct = $direct;
+        return new static($direct, $manifestPath);
+    }
 
-        if (is_readable($manifestPath)) {
-            $content = @file_get_contents($manifestPath) ?: '';
-            $paths = @json_decode($content, true);
+    /**
+     * @param DirectUrlResolver $directResolver
+     * @param string $manifestPath
+     */
+    final protected function __construct(
+        private DirectUrlResolver $directResolver,
+        string $manifestPath
+    ) {
 
-            is_array($paths) and $this->paths = $paths;
-        }
+        $this->determinePaths($manifestPath);
     }
 
     /**
      * @param string $relative
-     * @param MinifyResolver $minifyResolver
+     * @param MinifyResolver|null $minifyResolver
      * @return string
      */
-    public function resolve(string $relative, MinifyResolver $minifyResolver): string
+    public function resolve(string $relative, ?MinifyResolver $minifyResolver): string
     {
         if (!$this->paths) {
-            return $this->direct->resolve($relative, $minifyResolver);
+            return $this->directResolver->resolve($relative, $minifyResolver);
         }
 
-        $path = trim((string)parse_url($relative, PHP_URL_PATH), '/');
+        $path = trim((string) parse_url($relative, PHP_URL_PATH), '/');
         $manifestPath = $this->paths[$path] ?? null;
 
-        if (!$manifestPath || !is_string($manifestPath)) {
+        if (($manifestPath === '') || !is_string($manifestPath)) {
             $manifestPath = $path;
         }
 
-        return $this->direct->resolve($manifestPath, $minifyResolver);
+        return $this->directResolver->resolve($manifestPath, $minifyResolver);
     }
 
     /**
-     * @param Context $context
-     * @return UrlResolver
+     * @return array<non-empty-string, non-empty-string>
      */
-    public function withContext(Context $context): UrlResolver
+    public function resolveAll(): array
     {
-        $this->direct = $this->direct->withContext($context);
+        $found = [];
+        foreach ($this->paths as $name => $path) {
+            if (
+                ($name === '')
+                || ($path === '')
+                || !is_string($name)
+                || !is_string($path)
+                || (preg_match('~^.+?\.(?:css|js)$~i', $path) === false)
+            ) {
+                continue;
+            }
+            $url = $this->directResolver->resolve($path, null);
+            ($url !== '') and $found[$name] = $url;
+        }
 
-        return $this;
+        return $found;
+    }
+
+    /**
+     * @param string $manifestPath
+     * @return void
+     */
+    private function determinePaths(string $manifestPath): void
+    {
+        if (!is_readable($manifestPath)) {
+            return;
+        }
+
+        try {
+            $content = @file_get_contents($manifestPath);
+            $paths = (($content !== false) && ($content !== ''))
+                ? json_decode($content, associative: true, flags: JSON_THROW_ON_ERROR)
+                : null;
+            if (!is_array($paths)) {
+                return;
+            }
+            foreach ($paths as $name => $path) {
+                if (($name === '') || ($path === '') || !is_string($name) || !is_string($path)) {
+                    continue;
+                }
+                $name = ltrim($name, './');
+                $path = ltrim($path, './');
+                if (($name !== '') && ($path !== '')) {
+                    $this->paths[$name] = $path;
+                }
+            }
+        } catch (\Throwable) {
+            // silence
+        }
     }
 }

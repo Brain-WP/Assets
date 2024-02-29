@@ -1,46 +1,56 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Enqueue;
 
-use Brain\Assets\Assets;
-
-class JsEnqueue implements Enqueue
+class JsEnqueue extends AbstractEnqueue
 {
-    /**
-     * @var string
-     */
-    private $handle;
+    private Filters|null $filters = null;
 
     /**
-     * @var Filters|null
+     * @param string $handle
+     * @param Strategy|null $strategy
+     * @return static
      */
-    private $filters;
-
-    /**
-     * @param string $name
-     * @param Assets $assets
-     * @return JsEnqueue
-     */
-    public static function forFile(string $name, Assets $assets): JsEnqueue
+    public static function newRegistration(string $handle, ?Strategy $strategy = null): static
     {
-        return new static($assets->handleForName($name));
+        return new static($handle, $strategy, false);
     }
 
     /**
      * @param string $handle
-     * @return JsEnqueue
+     * @param Strategy|null $strategy
+     * @return static
      */
-    public static function create(string $handle): JsEnqueue
+    public static function new(string $handle, ?Strategy $strategy = null): static
     {
-        return new static($handle);
+        return new static($handle, $strategy, true);
     }
 
     /**
      * @param string $handle
+     * @param Strategy|null $strategy
+     * @param bool $isEnqueue
      */
-    public function __construct(string $handle)
-    {
-        $this->handle = $handle;
+    final protected function __construct(
+        private string $handle,
+        private ?Strategy $strategy,
+        bool $isEnqueue
+    ) {
+
+        $this->isCss = false;
+        $this->isEnqueue = $isEnqueue;
     }
 
     /**
@@ -68,7 +78,7 @@ class JsEnqueue implements Enqueue
      */
     public function prependInline(string $jsCode): JsEnqueue
     {
-        wp_scripts()->add_data($this->handle, 'before', $jsCode);
+        wp_add_inline_script($this->handle, $jsCode, 'before');
 
         return $this;
     }
@@ -79,7 +89,8 @@ class JsEnqueue implements Enqueue
      */
     public function appendInline(string $jsCode): JsEnqueue
     {
-        wp_scripts()->add_data($this->handle, 'after', $jsCode);
+        wp_add_inline_script($this->handle, $jsCode, 'after');
+        $this->removeStrategy();
 
         return $this;
     }
@@ -101,7 +112,7 @@ class JsEnqueue implements Enqueue
      */
     public function useAsync(): JsEnqueue
     {
-        $this->setupFilters()->addAttribute('async', null);
+        $this->useStrategyAttribute(Strategy::ASYNC);
 
         return $this;
     }
@@ -111,7 +122,7 @@ class JsEnqueue implements Enqueue
      */
     public function useDefer(): JsEnqueue
     {
-        $this->setupFilters()->addAttribute('defer', null);
+        $this->useStrategyAttribute(Strategy::DEFER);
 
         return $this;
     }
@@ -123,9 +134,20 @@ class JsEnqueue implements Enqueue
      */
     public function useAttribute(string $name, ?string $value): JsEnqueue
     {
-        $this->setupFilters()->addAttribute($name, $value);
+        $nameLower = strtolower($name);
+        if (($nameLower !== 'async') && ($nameLower !== 'defer')) {
+            $this->setupFilters()->addAttribute($name, $value);
 
-        return $this;
+            return $this;
+        }
+
+        if (strtolower($value ?? '') === 'false') {
+            $this->removeStrategy();
+
+            return $this;
+        }
+
+        return ($nameLower === 'async') ? $this->useAsync() : $this->useDefer();
     }
 
     /**
@@ -140,13 +162,40 @@ class JsEnqueue implements Enqueue
     }
 
     /**
+     * @param 'async'|'defer' $strategy
+     * @return void
+     *
+     * phpcs:disable Generic.Metrics.CyclomaticComplexity
+     */
+    private function useStrategyAttribute(string $strategyName): void
+    {
+        wp_scripts()->add_data($this->handle, 'strategy', $strategyName);
+
+        $this->strategy = match ($strategyName) {
+            Strategy::ASYNC => Strategy::newAsync($this->strategy?->inFooter() ?? false),
+            Strategy::DEFER => Strategy::newDefer($this->strategy?->inFooter() ?? false),
+        };
+    }
+
+    /**
+     * @return void
+     */
+    private function removeStrategy(): void
+    {
+        if ($this->strategy) {
+            $this->strategy = $this->strategy->removeStrategy();
+            wp_scripts()->add_data($this->handle, 'strategy', false);
+        }
+    }
+
+    /**
      * @return Filters
      */
     private function setupFilters(): Filters
     {
         if (!$this->filters) {
-            $this->filters = Filters::forScripts();
-            $this->addFilterHooks();
+            $this->filters = Filters::newForScripts();
+            $this->filterScriptLoaderSrc();
         }
 
         return $this->filters;
@@ -154,38 +203,17 @@ class JsEnqueue implements Enqueue
 
     /**
      * @return void
-     *
-     * phpcs:disable Generic.Metrics.NestingLevel
      */
-    private function addFilterHooks(): void
+    private function filterScriptLoaderSrc(): void
     {
-        // phpcs:enable
-
-        /**
-         * @psalm-suppress MissingClosureReturnType
-         * @psalm-suppress MissingClosureParamType
-         */
         add_filter(
             'script_loader_src',
-            function ($src, string $handle) {
-                if ($handle !== $this->handle || !is_string($src)) {
+            function (mixed $src, string $handle): mixed {
+                if (($handle !== $this->handle) || !is_string($src) || ($src === '')) {
                     return $src;
                 }
 
-                add_filter(
-                    'script_loader_tag',
-                    function ($tag, string $handle) use ($src) {
-                        if (is_string($tag) && $handle) {
-                            return $this->filterTag($tag, $src, $handle);
-                        }
-
-                        return $tag;
-                    },
-                    10,
-                    2
-                );
-
-                return $src;
+                return $this->filterScriptLoaderTag($src);
             },
             10,
             2
@@ -193,17 +221,34 @@ class JsEnqueue implements Enqueue
     }
 
     /**
-     * @param string $tag
-     * @param string $src
-     * @param string $handle
+     * @param non-empty-string $src
+     * @return non-empty-string
+     */
+    private function filterScriptLoaderTag(string $src): string
+    {
+        add_filter(
+            'script_loader_tag',
+            function (mixed $tag, string $handle) use ($src): mixed {
+                if (($handle === $this->handle) && is_string($tag) && ($tag !== '')) {
+                    return $this->filterTag($tag, $src);
+                }
+
+                return $tag;
+            },
+            10,
+            2
+        );
+
+        return $src;
+    }
+
+    /**
+     * @param non-empty-string $tag
+     * @param non-empty-string $src
      * @return string
      */
-    private function filterTag(string $tag, string $src, string $handle): string
+    private function filterTag(string $tag, string $src): string
     {
-        if (!$tag || $handle !== $this->handle) {
-            return $tag;
-        }
-
         $regex = '(?P<before>.+)?'
             . '(?P<tag><script.+?src\s*=\s*[\'"]' . preg_quote($src, '~') . '[\'"].+?</script>)'
             . '(?P<after>.+)?';

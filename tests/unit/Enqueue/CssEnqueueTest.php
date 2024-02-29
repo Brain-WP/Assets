@@ -1,94 +1,100 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\Enqueue;
 
 use Brain\Assets\Enqueue\CssEnqueue;
 use Brain\Assets\Tests\TestCase;
+use Brain\Assets\Tests\WpAssetsStub;
 use Brain\Monkey\Functions;
 use Brain\Monkey\Filters;
 
 class CssEnqueueTest extends TestCase
 {
-    public $stylesData = []; // phpcs:ignore
+    private WpAssetsStub|null $wpStyles = null;
 
+    /**
+     * @return void
+     */
     protected function setUp(): void
     {
         parent::setUp();
 
-        $styles = new class($this)
-        {
-            private $test;
-
-            public function __construct(CssEnqueueTest $test)
-            {
-                $this->test = $test;
-            }
-
-            /**
-             * @param $handle
-             * @param mixed ...$args
-             *
-             * @phpcs:disable
-             */
-            public function add_data($handle, ...$args)
-            {
-                $this->test->stylesData[$handle] = $args;
-            }
-        };
-
         Functions\when('wp_styles')->alias(
-            function () use ($styles) {
-                return $styles;
+            function (): WpAssetsStub {
+                $this->wpStyles or $this->wpStyles = new WpAssetsStub();
+                return $this->wpStyles;
             }
         );
     }
 
+    /**
+     * @return void
+     */
     protected function tearDown(): void
     {
-        $this->stylesData = [];
+        $this->wpStyles = null;
         parent::tearDown();
     }
 
-    public function testConditional()
+    /**
+     * @test
+     */
+    public function testConditional(): void
     {
-        $enqueue = new CssEnqueue('h1');
-        $enqueue->withCondition('lt IE 9');
+        CssEnqueue::new('h1')->withCondition('lt IE 9');
 
-        static::assertSame(['conditional', 'lt IE 9'], $this->stylesData['h1']);
+        static::assertSame(['conditional', 'lt IE 9'], $this->wpStyles?->data['h1']);
     }
 
-    public function testAlternate()
+    /**
+     * @test
+     */
+    public function testAlternate(): void
     {
-        $enqueue = new CssEnqueue('h2');
-        $enqueue->asAlternate();
+        CssEnqueue::new('h2')->asAlternate();
 
-        static::assertSame(['alt', true], $this->stylesData['h2']);
+        static::assertSame(['alt', true], $this->wpStyles?->data['h2']);
     }
 
-    public function testTitle()
+    /**
+     * @test
+     */
+    public function testTitle(): void
     {
-        $enqueue = new CssEnqueue('h3');
-        $enqueue->withTitle('Hello');
+        CssEnqueue::new('h3')->withTitle('Hello');
 
-        static::assertSame(['title', 'Hello'], $this->stylesData['h3']);
+        static::assertSame(['title', 'Hello'], $this->wpStyles?->data['h3']);
     }
 
-    public function testInline()
+    /**
+     * @test
+     */
+    public function testInline(): void
     {
         $inline = 'p { display:none }';
 
-        Functions\expect('wp_add_inline_style')
-            ->once()
-            ->with('h4', $inline);
+        Functions\expect('wp_add_inline_style')->once()->with('h4', $inline);
 
-        $enqueue = new CssEnqueue('h4');
-        $enqueue->appendInline($inline);
+        CssEnqueue::new('h4')->appendInline($inline);
     }
 
-    public function testFilters()
+    /**
+     * @test
+     */
+    public function testFilters(): void
     {
-        Functions\when('esc_attr')->returnArg();
-
         $tag = '<link rel="stylesheet" href="https://example.com/style.css">';
         $handle = 'h5';
         /** @var callable|null $filterCallback */
@@ -97,7 +103,7 @@ class CssEnqueueTest extends TestCase
         Filters\expectAdded('style_loader_tag')
             ->once()
             ->whenHappen(
-                function (callable $callback) use (&$filterCallback): void {
+                static function (callable $callback) use (&$filterCallback): void {
                     $filterCallback = $callback;
                 }
             );
@@ -106,29 +112,22 @@ class CssEnqueueTest extends TestCase
             ->once()
             ->with($tag, $handle)
             ->andReturnUsing(
-                function (string $tag, string $handle) use (&$filterCallback): string {
+                static function (string $tag, string $handle) use (&$filterCallback): mixed {
+                    /** @var callable $filterCallback */
                     return $filterCallback($tag, $handle);
                 }
             );
 
-        $enqueue = new CssEnqueue($handle);
-
-        $enqueue
+        CssEnqueue::new($handle)
             ->useAttribute('data-foo', 'bar')
             ->useAttribute('meh', null)
-            ->addFilter(
-                function ($tag) {
-                    return str_replace(' rel="stylesheet"', '', $tag);
-                }
-            )->addFilter(
-                function ($tag) {
-                    return str_replace('style.css', 'style-1.css', $tag);
-                }
-            )->addFilter(
-                function ($tag) {
-                    return str_replace('https', 'http', $tag);
-                }
-            );
+            ->addFilter(static function (string $tag): string {
+                return str_replace(' rel="stylesheet"', '', $tag);
+            })->addFilter(static function (string $tag): string {
+                return str_replace('style.css', 'style-1.css', $tag);
+            })->addFilter(static function (string $tag): string {
+                return str_replace('https', 'http', $tag);
+            });
 
         $filtered = apply_filters('style_loader_tag', $tag, $handle);
 

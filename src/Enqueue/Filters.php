@@ -1,53 +1,56 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Enqueue;
 
 class Filters
 {
-    /**
-     * @var string
-     */
-    private $tag;
-    
-    /**
-     * @var callable[]
-     */
-    private $filters = [];
+    /** @var list<callable> */
+    private array $filters = [];
+
+    /** @var array<string, string|null> */
+    private array $attributes = [];
 
     /**
-     * @var array<string, string|null>
+     * @return static
      */
-    private $attributes = [];
-
-    /**
-     * @return Filters
-     */
-    public static function forScripts(): Filters
+    public static function newForScripts(): static
     {
         return new static('script');
     }
 
     /**
-     * @return Filters
+     * @return static
      */
-    public static function forStyles(): Filters
+    public static function newForStyles(): static
     {
         return new static('link');
     }
 
     /**
-     * @param string $tag
+     * @param 'link'|'script' $tag
      */
-    private function __construct(string $tag)
-    {
-        $this->tag = $tag;
+    final protected function __construct(
+        private string $tag
+    ) {
     }
 
     /**
      * @param callable $filter
-     * @return Filters
+     * @return static
      */
-    public function add(callable $filter): Filters
+    public function add(callable $filter): static
     {
         $this->filters[] = $filter;
 
@@ -57,20 +60,22 @@ class Filters
     /**
      * @param string $name
      * @param string|null $value
-     * @return Filters
+     * @return static
      */
-    public function addAttribute(string $name, ?string $value): Filters
+    public function addAttribute(string $name, ?string $value): static
     {
         if (array_key_exists($name, $this->attributes)) {
             return $this;
         }
 
-        $name = $name ? (string)preg_replace('~[^a-z0-9_\-]~', '', strtolower($name)) : '';
-        if (!$name) {
+        $name = ($name !== '') ? (string) sanitize_key($name) : '';
+        if ($name === '') {
             return $this;
         }
 
-        $value and $value = trim((string)esc_attr($value));
+        if (($value !== null) && ($value !== '')) {
+            $value = trim(esc_attr($value));
+        }
 
         $this->attributes[$name] = $value;
 
@@ -81,32 +86,32 @@ class Filters
      * @param string $tag
      * @return string
      *
-     * phpcs:disable Generic.Metrics.NestingLevel
+     * phpcs:disable Inpsyde.CodeQuality.NestingLevel
      */
     public function apply(string $tag): string
     {
-        // phpcs:enable
+        // phpcs:enable Inpsyde.CodeQuality.NestingLevel
 
-        try {
-            foreach ($this->filters as $filter) {
-                $tag = $filter($tag);
-                if (!$tag || !is_string($tag)) {
-                    return '';
-                }
+        foreach ($this->attributes as $name => $value) {
+            if (preg_match('~\s+' . preg_quote($name, '~') . '(?:\s|=|>)~', $tag)) {
+                continue;
             }
 
-            foreach ($this->attributes as $name => $value) {
-                if (preg_match('~\s+' . preg_quote($name, '~') . '(?:\s|=|>)~', $tag)) {
-                    continue;
-                }
-
-                $replace =  $value === null ? $name : "{$name}=\"{$value}\"";
-                $tag = str_replace("<{$this->tag}", "<{$this->tag} {$replace}", $tag);
-            }
-
-            return $tag;
-        } catch (\Throwable $exception) {
-            return '';
+            $replace = ($value === null) ? $name : "{$name}=\"{$value}\"";
+            $tag = str_replace("<{$this->tag}", "<{$this->tag} {$replace}", $tag);
         }
+
+        foreach ($this->filters as $filter) {
+            try {
+                $maybeTag = $filter($tag);
+                if (($maybeTag !== '') && is_string($maybeTag)) {
+                    $tag = $maybeTag;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $tag;
     }
 }

@@ -1,0 +1,10 @@
+{
+  "./front-style.css": "./front-style.abcde.css",
+  "./front.js": "./front.abcde.js",
+  "./admin-style.css": "./admin-style.abcde.css",
+  "./admin.js": "./admin.abcde.js",
+  "./block-a-style.css": "./block-a-style.abcde.css",
+  "./block-a.js": "./block-a.abcde.js",
+  "./block-b-style.css": "./block-b-style.abcde.css",
+  "./block-b.js": "./block-b.abcde.js"
+}

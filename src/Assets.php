@@ -1,10 +1,22 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets;
 
-use Brain\Assets\Enqueue;
-use Brain\Assets\UrlResolver\DirectUrlResolver;
-use Brain\Assets\Version\NoVersion;
+use Brain\Assets\Enqueue\Collection;
+use Brain\Assets\Enqueue\JsEnqueue;
+use Brain\Assets\Enqueue\Strategy;
 
 class Assets
 {
@@ -14,385 +26,223 @@ class Assets
     public const VIDEO = 'videos';
     public const FONT = 'fonts';
 
-    /**
-     * @var string
-     */
-    private $name;
-
-    /**
-     * @var Context\Context
-     */
-    private $context;
-
-    /**
-     * @var Version\Version
-     */
-    private $version;
-
-    /**
-     * @var array<string, string>
-     */
-    private $subFolders = [];
-
-    /**
-     * @var UrlResolver\UrlResolver
-     */
-    private $urlResolver;
-
-    /**
-     * @var UrlResolver\MinifyResolver
-     */
-    private $minifyResolver;
-
-    /**
-     * @var string
-     */
-    private $prefixHandle = '';
-
-    /**
-     * @var bool
-     */
-    private $forceSecureUrls = true;
+    private UrlResolver\MinifyResolver|null $minifyResolver = null;
+    private string $handlePrefix;
+    private bool $addVersion = true;
+    private bool $forceSecureUrls = true;
+    private bool $useDepExtractionData = false;
+    /** @var array<string, list{string, bool}> */
+    private array $subFolders = [];
 
     /**
      * @param string $mainPluginFilePath
      * @param string $assetsDir
-     * @return Assets
+     * @return static
      */
-    public static function forPlugin(string $mainPluginFilePath, string $assetsDir = '/'): Assets
+    public static function forPlugin(string $mainPluginFilePath, string $assetsDir = '/'): static
     {
-        $name = (string)plugin_basename($mainPluginFilePath);
-        if (substr_count($name, '/')) {
-            $name = explode('/', $name)[0];
-        }
+        $context = Factory::factoryContextForPlugin($mainPluginFilePath, $assetsDir);
 
-        $assetsDir = '/' . trailingslashit(ltrim($assetsDir, '/'));
-        $baseDir = dirname($mainPluginFilePath) . $assetsDir;
-        $baseUrl = (string)plugins_url($assetsDir, $mainPluginFilePath);
-
-        /**
-         * @var Context\Context $context
-         * @var Version\Version $version
-         * @var UrlResolver\UrlResolver $urlResolver
-         * @var UrlResolver\MinifyResolver $minifyResolver
-         */
-        [$context, $version, $urlResolver, $minifyResolver] = static::factoryDependencies(
-            $baseDir,
-            $baseUrl
-        );
-
-        return new static($name, $context, $version, $urlResolver, $minifyResolver);
+        return new static(Factory::new($context));
     }
 
     /**
      * @param string $assetsDir
-     * @return Assets
+     * @return static
      */
-    public static function forTheme(string $assetsDir = '/'): Assets
+    public static function forTheme(string $assetsDir = '/'): static
     {
-        $name = (string)get_template();
-        $dir = trailingslashit(ltrim($assetsDir, '/'));
-        $baseDir = trailingslashit((string)get_template_directory()) . $dir;
-        $baseUrl = trailingslashit((string)get_template_directory_uri()) . $dir;
-
-        /**
-         * @var Context\Context $context
-         * @var Version\Version $version
-         * @var UrlResolver\UrlResolver $urlResolver
-         * @var UrlResolver\MinifyResolver $minifyResolver
-         */
-        [$context, $version, $urlResolver, $minifyResolver] = static::factoryDependencies(
-            $baseDir,
-            $baseUrl
-        );
-
-        return new static($name, $context, $version, $urlResolver, $minifyResolver);
+        return new static(Factory::new(Factory::factoryContextForTheme($assetsDir)));
     }
 
     /**
      * @param string $assetsDir
      * @param string|null $parentAssetsDir
-     * @return Assets
+     * @return static
      */
     public static function forChildTheme(
         string $assetsDir = '/',
         ?string $parentAssetsDir = null
-    ): Assets {
+    ): static {
 
-        $name = (string)get_stylesheet();
-        $dir = ltrim($assetsDir, '/');
-        $baseDir = trailingslashit((string)get_stylesheet_directory()) . $dir;
-        $baseUrl = trailingslashit((string)get_stylesheet_directory_uri()) . $dir;
+        $context = Factory::factoryContextForChildTheme($assetsDir, $parentAssetsDir);
 
-        $altBaseDir = null;
-        $altBaseUrl = null;
-        if ($name !== (string)get_template()) {
-            $parentDir = ltrim($parentAssetsDir ?? $assetsDir, '/');
-            $altBaseDir = trailingslashit((string)get_template_directory()) . $parentDir;
-            $altBaseUrl = trailingslashit((string)get_template_directory_uri()) . $parentDir;
-        }
-
-        /**
-         * @var Context\Context $context
-         * @var Version\Version $version
-         * @var UrlResolver\UrlResolver $urlResolver
-         * @var UrlResolver\MinifyResolver $minifyResolver
-         */
-        [$context, $version, $urlResolver, $minifyResolver] = static::factoryDependencies(
-            $baseDir,
-            $baseUrl,
-            $altBaseDir,
-            $altBaseUrl
-        );
-
-        return new static($name, $context, $version, $urlResolver, $minifyResolver);
+        return new static(Factory::new($context));
     }
 
     /**
-     * @param string $name
-     * @param string $baseDir
-     * @param string $baseUrl
-     * @return Assets
+     * @param non-empty-string $name
+     * @param non-falsy-string $baseDir
+     * @param non-falsy-string $baseUrl
+     * @return static
      */
-    public static function forLibrary(string $name, string $baseDir, string $baseUrl): Assets
+    public static function forLibrary(string $name, string $baseDir, string $baseUrl): static
     {
-        /**
-         * @var Context\Context $context
-         * @var Version\Version $version
-         * @var UrlResolver\UrlResolver $urlResolver
-         * @var UrlResolver\MinifyResolver $minifyResolver
-         */
-        [$context, $version, $urlResolver, $minifyResolver] = static::factoryDependencies(
-            $baseDir,
-            $baseUrl
-        );
+        $context = Factory::factoryContextForLibrary($name, $baseDir, $baseUrl);
 
-        return new static($name, $context, $version, $urlResolver, $minifyResolver);
+        return new static(Factory::new($context));
     }
 
     /**
-     * @param string $name
-     * @param string $manifestJsonPath
-     * @param string $baseUrl
-     * @param Version\Version|null $version
-     * @param UrlResolver\MinifyResolver|null $minifyResolver
-     * @return Assets
+     * @param non-empty-string $name
+     * @param non-falsy-string $manifestJsonPath
+     * @param non-falsy-string $baseUrl
+     * @param non-falsy-string|null $basePath
+     * @param non-falsy-string|null $altBasePath
+     * @param non-falsy-string|null $altBaseUrl
+     * @return static
      */
     public static function forManifest(
         string $name,
         string $manifestJsonPath,
         string $baseUrl,
-        ?Version\Version $version = null,
-        ?UrlResolver\MinifyResolver $minifyResolver = null
-    ): Assets {
-
-        $isDir = is_dir($manifestJsonPath);
-        $basePath = $isDir ? untrailingslashit($manifestJsonPath) : dirname($manifestJsonPath);
-        $context = new Context\WpContext($basePath, $baseUrl);
-        $version and $version = $version->withContext($context);
-
-        return new static(
-            $name,
-            $context,
-            $version ?? new NoVersion(),
-            new UrlResolver\ManifestUrlResolver(
-                new DirectUrlResolver($context),
-                $isDir ? "{$basePath}/manifest.json" : $manifestJsonPath
-            ),
-            $minifyResolver ?? UrlResolver\MinifyResolver::createDisabled()
-        );
-    }
-
-    /**
-     * @param string $basePath
-     * @param string $baseUrl
-     * @param string|null $altBasePath
-     * @param string|null $altBaseUrl
-     * @return array
-     */
-    private static function factoryDependencies(
-        string $basePath,
-        string $baseUrl,
+        ?string $basePath = null,
         ?string $altBasePath = null,
         ?string $altBaseUrl = null
-    ): array {
+    ): static {
 
-        $context = new Context\WpContext($basePath, $baseUrl, $altBasePath, $altBaseUrl);
-        $version = new Version\LastModifiedVersion($context);
-
-        $manifestPath = trailingslashit($basePath) . 'manifest.json';
-        $resolver = new UrlResolver\DirectUrlResolver($context);
-        $useManifest = file_exists($manifestPath);
-
-        $urlResolver = $useManifest
-            ? new UrlResolver\ManifestUrlResolver($resolver, $manifestPath)
-            : $resolver;
-
-        $minifyResolver = ($context->isDebug() || $useManifest)
-            ? UrlResolver\MinifyResolver::createDisabled()
-            : UrlResolver\MinifyResolver::createEnabled();
-
-        return [$context, $version, $urlResolver, $minifyResolver];
-    }
-
-    /**
-     * @param string $name
-     * @param Context\Context $context
-     * @param Version\Version|null $version
-     * @param UrlResolver\UrlResolver|null $urlResolver
-     * @param UrlResolver\MinifyResolver|null $minifyResolver
-     */
-    private function __construct(
-        string $name,
-        Context\Context $context,
-        ?Version\Version $version = null,
-        ?UrlResolver\UrlResolver $urlResolver = null,
-        ?UrlResolver\MinifyResolver $minifyResolver = null
-    ) {
-
-        $this->name = $name;
-        $this->prefixHandle = $name;
-        $this->context = $context;
-        $this->version = $version ?? new Version\NoVersion();
-        $this->urlResolver = $urlResolver ?? new UrlResolver\DirectUrlResolver($context);
-        $this->minifyResolver = $minifyResolver ?? UrlResolver\MinifyResolver::createEnabled();
-    }
-
-    /**
-     * @param string $manifestJsonPath
-     * @param string|null $baseUrl
-     * @param UrlResolver\MinifyResolver|null $minifyResolver
-     * @return Assets
-     */
-    public function useManifest(
-        string $manifestJsonPath,
-        ?string $baseUrl = null,
-        ?UrlResolver\MinifyResolver $minifyResolver = null
-    ): Assets {
-
-        $isDir = is_dir($manifestJsonPath);
-        $basePath = $isDir ? untrailingslashit($manifestJsonPath) : dirname($manifestJsonPath);
-        $context = new Context\WpContext($basePath, $baseUrl ?? $this->context->baseUrl());
-        $this->context = $context;
-        $this->minifyResolver = $minifyResolver ?? UrlResolver\MinifyResolver::createDisabled();
-        $this->urlResolver = new UrlResolver\ManifestUrlResolver(
-            new DirectUrlResolver($context),
-            $isDir ? "{$basePath}/manifest.json" : $manifestJsonPath
+        $context = Factory::factoryContextForManifest(
+            $name,
+            $manifestJsonPath,
+            $baseUrl,
+            $basePath,
+            $altBasePath,
+            $altBaseUrl
         );
 
-        return $this;
+        return new static(Factory::new($context));
     }
 
     /**
-     * @return Assets
+     * @param Context\Context $context
+     * @return static
      */
-    public function disableHandlePrefix(): Assets
+    public static function forContext(Context\Context $context): static
     {
-        $this->prefixHandle = '';
+        return new static(Factory::new($context));
+    }
+
+    /**
+     * @param Factory $factory
+     * @return static
+     */
+    public static function forFactory(Factory $factory): static
+    {
+        return new static($factory);
+    }
+
+    /**
+     * @param Factory $factory
+     */
+    final protected function __construct(private Factory $factory)
+    {
+        // Store separately from name, so we can enable & disable as well as changing it.
+        $this->handlePrefix = $this->context()->name();
+    }
+
+    /**
+     * @return string
+     */
+    public function handlePrefix(): string
+    {
+        return $this->handlePrefix;
+    }
+
+    /**
+     * @return static
+     */
+    public function disableHandlePrefix(): static
+    {
+        $this->handlePrefix = '';
 
         return $this;
     }
 
     /**
      * @param string|null $prefix
-     * @return Assets
+     * @return static
      */
-    public function enableHandlePrefix(?string $prefix = null): Assets
+    public function enableHandlePrefix(?string $prefix = null): static
     {
-        $this->prefixHandle = $prefix ?? $this->name;
+        $this->handlePrefix = $prefix ?? $this->context()->name();
 
         return $this;
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function dontTryMinUrls(): Assets
+    public function useDependencyExtractionData(): static
     {
-        $this->minifyResolver = UrlResolver\MinifyResolver::createDisabled();
+        $this->useDepExtractionData = true;
 
         return $this;
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function tryMinUrls(): Assets
+    public function dontUseDependencyExtractionData(): static
     {
-        $this->minifyResolver = UrlResolver\MinifyResolver::createEnabled();
+        $this->useDepExtractionData = false;
 
         return $this;
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function dontAddVersion(): Assets
+    public function dontTryMinUrls(): static
     {
-        $this->version = new Version\NoVersion();
+        $this->minifyResolver = null;
 
         return $this;
     }
 
     /**
-     * @param Version\Version $version
-     * @return Assets
+     * @return static
      */
-    public function addVersionUsing(Version\Version $version): Assets
+    public function tryMinUrls(): static
     {
-        $this->version = $version->withContext($this->context);
+        $this->minifyResolver = $this->factory->minifyResolver();
 
         return $this;
     }
 
     /**
-     * @param UrlResolver\UrlResolver $urlResolver
-     * @return Assets
+     * @return static
      */
-    public function resolveUrlsUsing(UrlResolver\UrlResolver $urlResolver): Assets
+    public function dontAddVersion(): static
     {
-        $this->urlResolver = $urlResolver->withContext($this->context);
+        $this->addVersion = false;
 
         return $this;
     }
 
     /**
-     * @param Context\Context $context
-     * @return Assets
+     * @return static
      */
-    public function replaceContext(Context\Context $context): Assets
+    public function forceDebug(): static
     {
-        $this->context = $context;
-        $this->version = $this->version->withContext($context);
-        $this->urlResolver = $this->urlResolver->withContext($context);
+        $this->factory->context()->enableDebug();
 
         return $this;
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function forceDebug(): Assets
+    public function forceNoDebug(): static
     {
-        $this->minifyResolver = UrlResolver\MinifyResolver::createDisabled();
+        $this->factory->context()->disableDebug();
 
-        return $this->replaceContext($this->context->enableDebug());
+        return $this;
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function forceNoDebug(): Assets
-    {
-        $this->minifyResolver = UrlResolver\MinifyResolver::createDisabled();
-
-        return $this->replaceContext($this->context->disableDebug());
-    }
-
-    /**
-     * @return Assets
-     */
-    public function forceSecureUrls(): Assets
+    public function forceSecureUrls(): static
     {
         $this->forceSecureUrls = true;
 
@@ -400,9 +250,9 @@ class Assets
     }
 
     /**
-     * @return Assets
+     * @return static
      */
-    public function dontForceSecureUrls(): Assets
+    public function dontForceSecureUrls(): static
     {
         $this->forceSecureUrls = false;
 
@@ -410,100 +260,72 @@ class Assets
     }
 
     /**
-     * @return string
-     */
-    public function name(): string
-    {
-        return $this->name;
-    }
-
-    /**
      * @return Context\Context
      */
     public function context(): Context\Context
     {
-        return $this->context;
-    }
-
-    /**
-     * @return Version\Version
-     */
-    public function version(): Version\Version
-    {
-        return $this->version;
-    }
-
-    /**
-     * @return UrlResolver\UrlResolver
-     */
-    public function urlResolver(): UrlResolver\UrlResolver
-    {
-        return $this->urlResolver;
-    }
-
-    /**
-     * @return UrlResolver\MinifyResolver
-     */
-    public function minifyResolver(): UrlResolver\MinifyResolver
-    {
-        return $this->minifyResolver;
+        return $this->factory->context();
     }
 
     /**
      * @param string $path
-     * @return Assets
+     * @return static
      */
-    public function withCssFolder(string $path = 'css'): Assets
+    public function withCssFolder(string $path = 'css'): static
     {
-        return $this->withSubfolder(self::CSS, $path);
+        return $this->withSubfolder(self::CSS, $path, true);
     }
 
     /**
      * @param string $path
-     * @return Assets
+     * @return static
      */
-    public function withJsFolder(string $path = 'js'): Assets
+    public function withJsFolder(string $path = 'js'): static
     {
-        return $this->withSubfolder(self::JS, $path);
+        return $this->withSubfolder(self::JS, $path, true);
     }
 
     /**
      * @param string $path
-     * @return Assets
+     * @return static
      */
-    public function withImagesFolder(string $path = 'images'): Assets
+    public function withImagesFolder(string $path = 'images'): static
     {
-        return $this->withSubfolder(self::IMAGE, $path);
+        return $this->withSubfolder(self::IMAGE, $path, false);
     }
 
     /**
      * @param string $path
-     * @return Assets
+     * @return static
      */
-    public function withVideosFolder(string $path = 'videos'): Assets
+    public function withVideosFolder(string $path = 'videos'): static
     {
-        return $this->withSubfolder(self::VIDEO, $path);
+        return $this->withSubfolder(self::VIDEO, $path, false);
     }
 
     /**
      * @param string $path
-     * @return Assets
+     * @return static
      */
-    public function withFontsFolder(string $path = 'fonts'): Assets
+    public function withFontsFolder(string $path = 'fonts'): static
     {
-        return $this->withSubfolder(self::FONT, $path);
+        return $this->withSubfolder(self::FONT, $path, false);
     }
 
     /**
      * @param string $name
      * @param string|null $path
-     * @return Assets
+     * @param bool $supportMinify
+     * @return static
      */
-    public function withSubfolder(string $name, ?string $path = null): Assets
-    {
-        $name = trim($name, '/');
+    public function withSubfolder(
+        string $name,
+        ?string $path = null,
+        bool $supportMinify = false
+    ): static {
 
-        $this->subFolders[$name] = ltrim(trailingslashit($path ?? $name), '/');
+        $name = trim($name, '/');
+        $this->subFolders[$name] = [ltrim(trailingslashit($path ?? $name), '/'), $supportMinify];
 
         return $this;
     }
@@ -605,12 +427,7 @@ class Assets
      */
     public function assetUrl(string $relativePath, string $folder = ''): string
     {
-        $url = $this->rawAssetUrl($relativePath, $folder);
-
-        $version = $this->version->calculate($url);
-        if ($version) {
-            return (string)add_query_arg(Version\Version::QUERY_VAR, $version, $url);
-        }
+        [$url] = $this->assetUrlForEnqueue($relativePath, $folder);
 
         return $url;
     }
@@ -622,45 +439,24 @@ class Assets
      */
     public function rawAssetUrl(string $filename, string $folder = ''): string
     {
-        $urlData = (array)(parse_url($filename) ?: []);
+        [$url] = $this->prepareRawUrlData($filename, $folder);
 
-        // looks like an absolute URL
-        if (!empty($urlData['scheme']) || !empty($urlData['host'])) {
-            // let's see if we can reduce it to a relative URL
-            $maybeRelative = $this->tryRelativeUrl($filename, $folder);
-            if (!$maybeRelative) {
-                // if not, we just return it
-                return $this->adjustAbsoluteUrl($filename);
-            }
+        return $url;
+    }
 
-            // if yes, we start over with relative URL
-            return $this->rawAssetUrl($maybeRelative, $folder);
-        }
+    /**
+     * @param string $name
+     * @param array $deps
+     * @param string $media
+     * @return Enqueue\CssEnqueue
+     */
+    public function registerStyle(
+        string $name,
+        array $deps = [],
+        string $media = 'all'
+    ): Enqueue\CssEnqueue {
 
-        if (!array_key_exists('path', $urlData)) {
-            return '';
-        }
-
-        $path = ltrim((string)$urlData['path'], '/');
-
-        $relativeUrl = $folder
-            ? ltrim(trailingslashit(($this->subFolders[$folder] ?? '')) . $path, '/')
-            : $path;
-
-        $ext = pathinfo($path, PATHINFO_EXTENSION);
-
-        if (!$ext && in_array($folder, [self::CSS, self::JS], true)) {
-            $ext = $folder === self::CSS ? 'css' : 'js';
-            $relativeUrl .= ".{$ext}";
-        }
-
-        if ($urlData['query'] ?? '') {
-            $relativeUrl .= "?{$urlData['query']}";
-        }
-
-        $url = $this->urlResolver->resolve($relativeUrl, $this->minifyResolver);
-
-        return $this->adjustAbsoluteUrl($url);
+        return $this->doEnqueueOrRegisterStyle('register', $name, null, $deps, $media);
     }
 
     /**
@@ -675,92 +471,105 @@ class Assets
         string $media = 'all'
     ): Enqueue\CssEnqueue {
 
-        $handle = $this->handleForName($name);
-
-        wp_enqueue_style(
-            $handle,
-            $this->assetUrl($name, self::CSS),
-            $this->prepareDeps($deps),
-            null,
-            $media
-        );
-
-        return new Enqueue\CssEnqueue($handle);
+        return $this->doEnqueueOrRegisterStyle('enqueue', $name, null, $deps, $media);
     }
 
     /**
      * @param string $name
+     * @param string $url
      * @param array $deps
-     * @param bool $footer
-     * @return Enqueue\JsEnqueue
+     * @param string $media
+     * @return Enqueue\CssEnqueue
      */
-    public function enqueueScript(
+    public function registerExternalStyle(
         string $name,
+        string $url,
         array $deps = [],
-        bool $footer = true
-    ): Enqueue\JsEnqueue {
+        string $media = 'all'
+    ): Enqueue\CssEnqueue {
 
-        $handle = $this->handleForName($name);
-
-        wp_enqueue_script(
-            $handle,
-            $this->assetUrl($name, self::JS),
-            $this->prepareDeps($deps),
-            null,
-            $footer
-        );
-
-        return new Enqueue\JsEnqueue($handle);
+        return $this->doEnqueueOrRegisterStyle('register', $name, $url, $deps, $media);
     }
 
     /**
-     * @param string $handle
+     * @param string $name
      * @param string $url
      * @param array $deps
      * @param string $media
      * @return Enqueue\CssEnqueue
      */
     public function enqueueExternalStyle(
-        string $handle,
+        string $name,
         string $url,
         array $deps = [],
         string $media = 'all'
     ): Enqueue\CssEnqueue {
 
-        wp_enqueue_style(
-            $handle,
-            $this->adjustAbsoluteUrl($url),
-            $this->prepareDeps($deps),
-            null,
-            $media
-        );
-
-        return new Enqueue\CssEnqueue($handle);
+        return $this->doEnqueueOrRegisterStyle('enqueue', $name, $url, $deps, $media);
     }
 
     /**
-     * @param string $handle
+     * @param string $name
+     * @param array $deps
+     * @param Enqueue\Strategy|bool|array|string|null $strategy
+     * @return Enqueue\JsEnqueue
+     */
+    public function registerScript(
+        string $name,
+        array $deps = [],
+        Enqueue\Strategy|bool|array|string|null $strategy = null
+    ): Enqueue\JsEnqueue {
+
+        return $this->doEnqueueOrRegisterScript('register', $name, null, $deps, $strategy);
+    }
+
+    /**
+     * @param string $name
+     * @param array $deps
+     * @param Enqueue\Strategy|bool|array|string|null $strategy
+     * @return Enqueue\JsEnqueue
+     */
+    public function enqueueScript(
+        string $name,
+        array $deps = [],
+        Enqueue\Strategy|bool|array|string|null $strategy = null
+    ): Enqueue\JsEnqueue {
+
+        return $this->doEnqueueOrRegisterScript('enqueue', $name, null, $deps, $strategy);
+    }
+
+    /**
+     * @param string $name
      * @param string $url
      * @param array $deps
-     * @param bool $footer
+     * @param Strategy|bool|array|string|null $strategy
+     * @return JsEnqueue
+     */
+    public function registerExternalScript(
+        string $name,
+        string $url,
+        array $deps = [],
+        Enqueue\Strategy|bool|array|string|null $strategy = null
+    ): Enqueue\JsEnqueue {
+
+        return $this->doEnqueueOrRegisterScript('register', $name, $url, $deps, $strategy);
+    }
+
+    /**
+     * @param string $name
+     * @param string $url
+     * @param array $deps
+     * @param Enqueue\Strategy|bool|array $strategy
      * @return Enqueue\JsEnqueue
      */
     public function enqueueExternalScript(
-        string $handle,
+        string $name,
         string $url,
         array $deps = [],
-        bool $footer = true
+        Enqueue\Strategy|bool|array $strategy = true
     ): Enqueue\JsEnqueue {
 
-        wp_enqueue_script(
-            $handle,
-            $this->adjustAbsoluteUrl($url),
-            $this->prepareDeps($deps),
-            null,
-            $footer
-        );
-
-        return new Enqueue\JsEnqueue($handle);
+        return $this->doEnqueueOrRegisterScript('enqueue', $name, $url, $deps, $strategy);
     }
 
     /**
@@ -769,15 +578,205 @@ class Assets
      */
     public function handleForName(string $name): string
     {
-        if (!$name) {
+        if ($name === '') {
             return '';
         }
 
-        $noExt = strtolower(explode('.', $name)[0]);
-        $replaced = preg_replace('~[^a-z0-9\-]~i', '-', $noExt);
-        $prepared = is_string($replaced) ? trim($replaced, '-') : trim($noExt, '-');
+        $replaced = preg_replace(['~\.[a-z0-9_-]+$~i', '~[^a-z0-9\-]+~i'], ['', '-'], $name);
+        $prepared = is_string($replaced) ? trim($replaced, '-') : trim($name, '-');
 
-        return $this->prefixHandle ? "{$this->prefixHandle}-{$prepared}" : $prepared;
+        return ($this->handlePrefix !== '') ? "{$this->handlePrefix}-{$prepared}" : $prepared;
+    }
+
+    /**
+     * @param array $jsDeps
+     * @param array $cssDeps
+     * @return Collection
+     */
+    public function registerAllFromManifest(array $jsDeps = [], array $cssDeps = []): Collection
+    {
+        $collection = [];
+        $urls = $this->factory->manifestUrlResolver()->resolveAll();
+        foreach ($urls as $name => $url) {
+            $registered = str_ends_with(strtolower($name), '.css')
+                ? $this->registerStyle($name, $cssDeps)
+                : $this->registerScript($name, $jsDeps);
+            do_action('brain.assets.registered-from-manifest', $registered);
+            $collection[] = $registered;
+        }
+
+        $registeredAll = Collection::new($this, ...$collection);
+        do_action('brain.assets.registered-all-from-manifest', $registeredAll);
+
+        return $registeredAll;
+    }
+
+    /**
+     * @param 'register'|'enqueue' $type
+     * @param string $name
+     * @param string|null $url
+     * @param array $deps
+     * @param string $media
+     * @return Enqueue\CssEnqueue
+     */
+    private function doEnqueueOrRegisterStyle(
+        string $type,
+        string $name,
+        ?string $url,
+        array $deps,
+        string $media
+    ): Enqueue\CssEnqueue {
+
+        $handle = $this->handleForName($name);
+        [$url, $useMinify] = ($url === null)
+            ? $this->assetUrlForEnqueue($name, self::CSS)
+            : [$this->adjustAbsoluteUrl($url), false];
+
+        $deps = $this->prepareDeps($deps, $url, $useMinify);
+
+        $isEnqueue = $type === 'enqueue';
+        /** @var callable $callback */
+        $callback = $isEnqueue ? 'wp_enqueue_style' : 'wp_register_style';
+
+        $callback($handle, $url, $deps, null, $media);
+
+        return $isEnqueue
+            ? Enqueue\CssEnqueue::new($handle)
+            : Enqueue\CssEnqueue::newRegistration($handle);
+    }
+
+    /**
+     * @param 'register'|'enqueue' $type
+     * @param string $name
+     * @param string|null $url
+     * @param array $deps
+     * @param Strategy|bool|array|string|null $strategy
+     * @return Enqueue\JsEnqueue
+     */
+    private function doEnqueueOrRegisterScript(
+        string $type,
+        string $name,
+        ?string $url,
+        array $deps,
+        Enqueue\Strategy|bool|array|string|null $strategy
+    ): Enqueue\JsEnqueue {
+
+        $handle = $this->handleForName($name);
+        [$url, $useMinify] = ($url === null)
+            ? $this->assetUrlForEnqueue($name, self::JS)
+            : [$this->adjustAbsoluteUrl($url), false];
+
+        $strategy = Enqueue\Strategy::new($strategy);
+        $deps = $this->prepareDeps($deps, $url, $useMinify);
+
+        $isEnqueue = $type === 'enqueue';
+        /** @var callable $callback */
+        $callback = $isEnqueue ? 'wp_enqueue_script' : 'wp_register_script';
+
+        $callback($handle, $url, $deps, null, $strategy->toArray());
+
+        return $isEnqueue
+            ? Enqueue\JsEnqueue::new($handle, $strategy)
+            : Enqueue\JsEnqueue::newRegistration($handle, $strategy);
+    }
+
+    /**
+     * @param string $filename
+     * @param string $folder
+     * @return list{string, array, bool}
+     */
+    private function prepareRawUrlData(string $filename, string $folder = ''): array
+    {
+        $urlData = parse_url($filename);
+
+        // Looks like an absolute URL
+        if (isset($urlData['scheme']) || isset($urlData['host'])) {
+            return [$this->rawUrlFromAbsolute($filename, $folder), $urlData, false];
+        }
+
+        $path = $urlData['path'] ?? null;
+        if (($path === null) || ($path === '') || (trim($path, '/') === '')) {
+            return ['', $urlData, false];
+        }
+
+        $relativeUrl = $this->buildRelativeUrl($folder, ltrim($path, '/'), $urlData['query'] ?? '');
+
+        $supportMinify = $this->subFolders[$folder][1] ?? false;
+        $minifyResolver = ($supportMinify && !$this->context()->isDebug())
+            ? $this->minifyResolver
+            : null;
+        $url = $this->factory->urlResolver()->resolve($relativeUrl, $minifyResolver);
+
+        return [$this->adjustAbsoluteUrl($url), $urlData, $minifyResolver !== null];
+    }
+
+    /**
+     * @param string $relativePath
+     * @param string $folder
+     * @return list{string, bool}
+     */
+    private function assetUrlForEnqueue(string $relativePath, string $folder = ''): array
+    {
+        [$url, $urlData, $useMinify] = $this->prepareRawUrlData($relativePath, $folder);
+
+        if (!$this->addVersion) {
+            return [$url, false];
+        }
+
+        $query = $urlData['query'] ?? null;
+        if (($query !== '') && ($query !== false) && ($query !== null)) {
+            return [$url, false];
+        }
+
+        $version = $this->prepareVersion($url, $useMinify);
+
+        if (($version !== null) && ($version !== '')) {
+            $url = (string) add_query_arg(Version\Version::QUERY_VAR, $version, $url);
+        }
+
+        return [$url, $useMinify];
+    }
+
+    /**
+     * @param string $filename
+     * @param string $folder
+     * @return string
+     */
+    private function rawUrlFromAbsolute(string $filename, string $folder): string
+    {
+        // Let's see if we can reduce it to a relative URL
+        $maybeRelative = $this->tryRelativeUrl($filename, $folder);
+        if ($maybeRelative === '') {
+            // If not, we just return it
+            return $this->adjustAbsoluteUrl($filename);
+        }
+
+        // If yes, we start over with relative URL
+        return $this->rawAssetUrl($maybeRelative, $folder);
+    }
+
+    /**
+     * @param string $folder
+     * @param string $path
+     * @param string $query
+     * @return string
+     */
+    private function buildRelativeUrl(string $folder, string $path, string $query): string
+    {
+        $relativeUrl = $folder
+            ? ltrim(trailingslashit(($this->subFolders[$folder][0] ?? '')) . $path, '/')
+            : $path;
+
+        $ext = pathinfo($path, PATHINFO_EXTENSION);
+
+        if (($ext === '') && in_array($folder, [self::CSS, self::JS], true)) {
+            $ext = $folder === self::CSS ? 'css' : 'js';
+            $relativeUrl .= ".{$ext}";
+        }
+
+        ($query !== '') and $relativeUrl .= "?{$query}";
+
+        return $relativeUrl;
     }
 
     /**
@@ -786,17 +785,19 @@ class Assets
      */
     private function adjustAbsoluteUrl(string $url): string
     {
-        if (substr($url, 0, 2) === '//') {
+        if (str_starts_with($url, '//')) {
             return $url;
         }
 
+        $forceHttps = is_ssl() && $this->forceSecureUrls;
         $scheme = parse_url($url, PHP_URL_SCHEME);
-        if (!$scheme) {
-            return (string)set_url_scheme($url);
-        }
 
-        if ($scheme === 'http' && is_ssl() && $this->forceSecureUrls) {
-            return (string)set_url_scheme($url, 'https');
+        if (
+            ($scheme === '')
+            || ($scheme === false)
+            || ((strtolower($scheme) !== 'https') && $forceHttps)
+        ) {
+            return (string) set_url_scheme($url, $forceHttps ? 'https' : null);
         }
 
         return $url;
@@ -807,60 +808,130 @@ class Assets
      * @param string $folder
      * @param string|null $baseUrl
      * @return string
+     *
+     * phpcs:disable Generic.Metrics.CyclomaticComplexity
      */
     private function tryRelativeUrl(string $url, string $folder, ?string $baseUrl = null): string
     {
+        // phpcs:enable Generic.Metrics.CyclomaticComplexity
         $urlData = parse_url($url);
-        $baseData = parse_url($baseUrl ?? $this->context->baseUrl());
+        $baseData = parse_url($baseUrl ?? $this->context()->baseUrl());
 
-        $urlHost = (string)($urlData['host'] ?? '');
-        $urlPath = trim((string)($urlData['path'] ?? ''), '/');
-        $urlQuery = (string)($urlData['query'] ?? '');
+        $urlHost = $urlData['host'] ?? '';
+        $urlPath = trim($urlData['path'] ?? '', '/');
+        $urlQuery = $urlData['query'] ?? '';
 
-        $basePath = trim((string)($baseData['path'] ?? ''), '/');
-        $baseHost = (string)($baseData['host'] ?? '');
+        $basePath = trim($baseData['path'] ?? '', '/');
+        $baseHost = $baseData['host'] ?? '';
 
-        $subFolder = trim(($this->subFolders[$folder] ?? ''));
+        $subFolder = trim(($this->subFolders[$folder][0] ?? ''));
         $subFolder and $basePath .= "/{$subFolder}";
 
         $urlComp = trailingslashit($urlHost) . $urlPath;
         $baseComp = trailingslashit($baseHost) . $basePath;
 
-        if (strpos($urlComp, $baseComp) === 0) {
-            $relative = trim((string)substr($urlComp, strlen($baseComp)), '/');
+        if (str_starts_with($urlComp, $baseComp)) {
+            $relative = trim(substr($urlComp, strlen($baseComp)), '/');
 
             return $urlQuery ? "{$relative}?{$urlQuery}" : $relative;
         }
 
-        if ($baseUrl === null && $this->context()->hasAlternative()) {
-            return $this->tryRelativeUrl($url, $folder, $this->context->altBaseUrl());
+        if (($baseUrl === null) && $this->context()->hasAlternative()) {
+            return $this->tryRelativeUrl($url, $folder, $this->context()->altBaseUrl());
         }
 
         return '';
     }
 
     /**
-     * @param array $deps
-     * @return string[]
+     * @param string $url
+     * @param bool $useMinify
+     * @return string|null
      */
-    private function prepareDeps(array $deps): array
+    private function prepareVersion(string $url, bool $useMinify): ?string
+    {
+        $factory = $this->factory;
+
+        $versionStr = match (true) {
+            $this->context()->isDebug() => str_replace(' ', '-', microtime()),
+            $this->useDepExtractionData => $factory->dependencyInfoExtractor()->readVersion($url),
+            default => null,
+        };
+
+        $urlNoMin = (($versionStr === null) && $this->useDepExtractionData && $useMinify)
+            ? $this->unminifiedUrl($url)
+            : null;
+        if ($urlNoMin !== null) {
+            $versionStr = $factory->dependencyInfoExtractor()->readVersion($urlNoMin);
+        }
+
+        $version = $factory->version();
+
+        $versionStr ??= $version->calculate($url);
+        if (($versionStr === null) && ($urlNoMin !== null)) {
+            $versionStr = $version->calculate($urlNoMin);
+        }
+
+        return $versionStr;
+    }
+
+    /**
+     * @param array $deps
+     * @param string|null $url
+     * @param bool $useMinify
+     * @return list<non-empty-string>
+     */
+    private function prepareDeps(array $deps, ?string $url, bool $useMinify): array
     {
         $prepared = [];
 
         foreach ($deps as $dep) {
             $name = null;
-
             if (is_string($dep)) {
                 $name = $dep;
             } elseif ($dep instanceof Enqueue\Enqueue) {
                 $name = $dep->handle();
             }
 
-            if ($name && !in_array($name, $prepared, true)) {
+            if (($name !== null) && ($name !== '')) {
                 $prepared[] = $name;
             }
         }
 
-        return $prepared;
+        if (($url === null) || !$this->useDepExtractionData) {
+            /** @var list<non-empty-string> */
+            return array_unique($prepared);
+        }
+
+        $infoExtractor = $this->factory->dependencyInfoExtractor();
+        $deps = $infoExtractor->readDependencies($url);
+        if ($useMinify && ($deps === [])) {
+            $urlNoMin = $this->unminifiedUrl($url);
+            if ($urlNoMin !== null) {
+                $deps = $infoExtractor->readDependencies($urlNoMin);
+            }
+        }
+
+        foreach ($deps as $dep) {
+            if (is_string($dep) && ($dep !== '')) {
+                $prepared[] = $dep;
+            }
+        }
+
+        /** @var list<non-empty-string> */
+        return array_unique($prepared);
+    }
+
+    /**
+     * @param string $url
+     * @return string|null
+     */
+    private function unminifiedUrl(string $url): ?string
+    {
+        if (preg_match('~^(.+?)\.min\.(css|js)$~i', $url, $matches) === 1) {
+            return "{$matches[1]}.{$matches[2]}";
+        }
+
+        return null;
     }
 }

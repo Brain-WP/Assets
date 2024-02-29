@@ -1,46 +1,52 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Enqueue;
 
-use Brain\Assets\Assets;
-
-class CssEnqueue implements Enqueue
+class CssEnqueue extends AbstractEnqueue
 {
-    /**
-     * @var string
-     */
-    private $handle;
+    private Filters|null $filters = null;
 
     /**
-     * @var Filters|null
+     * @param string $handle
+     * @return static
      */
-    private $filters;
-
-    /**
-     * @param string $name
-     * @param Assets $assets
-     * @return CssEnqueue
-     */
-    public static function forFile(string $name, Assets $assets): CssEnqueue
+    public static function newRegistration(string $handle): static
     {
-        return new static($assets->handleForName($name));
+        return new static($handle, false);
     }
 
     /**
      * @param string $handle
-     * @return CssEnqueue
+     * @return static
      */
-    public static function create(string $handle): CssEnqueue
+    public static function new(string $handle): static
     {
-        return new static($handle);
+        return new static($handle, true);
     }
 
     /**
      * @param string $handle
+     * @param bool $isEnqueue
      */
-    public function __construct(string $handle)
-    {
-        $this->handle = $handle;
+    final protected function __construct(
+        private string $handle,
+        bool $isEnqueue
+    ) {
+
+        $this->isEnqueue = $isEnqueue;
+        $this->isCss = true;
     }
 
     /**
@@ -53,9 +59,9 @@ class CssEnqueue implements Enqueue
 
     /**
      * @param string $condition
-     * @return CssEnqueue
+     * @return static
      */
-    public function withCondition(string $condition): CssEnqueue
+    public function withCondition(string $condition): static
     {
         wp_styles()->add_data($this->handle, 'conditional', $condition);
 
@@ -63,9 +69,9 @@ class CssEnqueue implements Enqueue
     }
 
     /**
-     * @return CssEnqueue
+     * @return static
      */
-    public function asAlternate(): CssEnqueue
+    public function asAlternate(): static
     {
         wp_styles()->add_data($this->handle, 'alt', true);
 
@@ -74,9 +80,9 @@ class CssEnqueue implements Enqueue
 
     /**
      * @param string $title
-     * @return CssEnqueue
+     * @return static
      */
-    public function withTitle(string $title): CssEnqueue
+    public function withTitle(string $title): static
     {
         wp_styles()->add_data($this->handle, 'title', $title);
 
@@ -85,9 +91,9 @@ class CssEnqueue implements Enqueue
 
     /**
      * @param string $cssCode
-     * @return CssEnqueue
+     * @return static
      */
-    public function appendInline(string $cssCode): CssEnqueue
+    public function appendInline(string $cssCode): static
     {
         wp_add_inline_style($this->handle, $cssCode);
 
@@ -95,46 +101,44 @@ class CssEnqueue implements Enqueue
     }
 
     /**
-     * @param callable $callback
-     * @return CssEnqueue
-     */
-    public function addFilter(callable $callback): CssEnqueue
-    {
-        $this->setupFilterHooks();
-
-        /** @psalm-suppress PossiblyNullReference */
-        $this->filters->add($callback);
-
-        return $this;
-    }
-
-    /**
      * @param string $name
      * @param string|null $value
-     * @return CssEnqueue
+     * @return static
      */
-    public function useAttribute(string $name, ?string $value): CssEnqueue
+    public function useAttribute(string $name, ?string $value): static
     {
         $normalizedName = trim(strtolower($name));
 
         if ($normalizedName === 'title') {
-            return $value ? $this->withTitle($value) : $this;
+            return (($value !== null) && ($value !== '')) ? $this->withTitle($value) : $this;
         }
 
         if ($normalizedName === 'alternate') {
-            return $value === null ? $this->asAlternate() : $this;
+            return ($value === null) ? $this->asAlternate() : $this;
         }
 
         $this->setupFilterHooks();
-
-        /** @psalm-suppress PossiblyNullReference */
         $this->filters->addAttribute($name, $value);
 
         return $this;
     }
 
     /**
+     * @param callable $callback
+     * @return static
+     */
+    public function addFilter(callable $callback): static
+    {
+        $this->setupFilterHooks();
+        $this->filters->add($callback);
+
+        return $this;
+    }
+
+    /**
      * @return void
+     *
+     * @psalm-assert Filters $this->filters
      */
     private function setupFilterHooks(): void
     {
@@ -142,16 +146,17 @@ class CssEnqueue implements Enqueue
             return;
         }
 
-        $this->filters = Filters::forStyles();
+        $this->filters = Filters::newForStyles();
 
-        /**
-         * @psalm-suppress MissingClosureReturnType
-         * @psalm-suppress MissingClosureParamType
-         */
         add_filter(
             'style_loader_tag',
-            function ($tag, string $handle) {
-                if ($tag && $handle === $this->handle && is_string($tag)) {
+            function (mixed $tag, string $handle): mixed {
+                if (
+                    $this->filters
+                    && ($tag !== '')
+                    && ($handle === $this->handle)
+                    && is_string($tag)
+                ) {
                     return $this->filters->apply($tag);
                 }
 

@@ -1,8 +1,19 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\UrlResolver;
 
-use Brain\Assets\Context\WpContext;
 use Brain\Assets\Tests\TestCase;
 use Brain\Assets\UrlResolver\DirectUrlResolver;
 use Brain\Assets\UrlResolver\ManifestUrlResolver;
@@ -10,87 +21,103 @@ use Brain\Assets\UrlResolver\MinifyResolver;
 
 class ManifestUrlResolverTest extends TestCase
 {
-    public function testResolveWithDisabledMinifierAndNoAlt()
+    /**
+     * @test
+     */
+    public function testResolveWithDisabledMinifierAndNoAlt(): void
     {
-        $solver = $this->createSolver();
-        $solved = $solver->resolve('foo.css', MinifyResolver::createDisabled());
+        $solver = $this->factorySolver(useAlt: false);
+        $solved = $solver->resolve('foo.css', null);
 
-        static::assertSame('https://example.com/assets/foo.abcde.css', $solved);
-    }
-
-    public function testResolveWithEnabledMinifierButNoMinFoundAndNoAlt()
-    {
-        $solver = $this->createSolver();
-        $solved = $solver->resolve('foo.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.abcde.css', $solved);
-    }
-
-    public function testResolveWithEnabledMinifierAndNoAlt()
-    {
-        $solver = $this->createSolver();
-        $solved = $solver->resolve('no-min.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.min.css', $solved);
-    }
-
-    public function testResolveWithEnabledMinifierNoMinFoundAndNoAlt()
-    {
-        $solver = $this->createSolver();
-        $solved = $solver->resolve('meh.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/meh.css', $solved);
-    }
-
-    public function testResolveWithDisabledMinifierAndAlt()
-    {
-        $solver = $this->createSolver(true);
-        $solved = $solver->resolve('bar-hash.css', MinifyResolver::createDisabled());
-
-        static::assertSame('https://example.com/alt/assets/bar.abcde.css', $solved);
-    }
-
-    public function testResolveWithDisabledMinifierAndAltPathNonInManifest()
-    {
-        $solver = $this->createSolver(true);
-        $solved = $solver->resolve('bar.css', MinifyResolver::createDisabled());
-
-        static::assertSame('https://example.com/alt/assets/bar.min.css', $solved);
-    }
-
-    public function testResolveWithEnabledMinifierAndAltPathNonInManifest()
-    {
-        $solver = $this->createSolver(true);
-        $solved = $solver->resolve('bar.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/alt/assets/bar.min.css', $solved);
-    }
-
-    public function testResolveWithEnabledMinifierButNoMinFoundAndAlt()
-    {
-        $solver = $this->createSolver(true);
-        $solved = $solver->resolve('foo.css', MinifyResolver::createEnabled());
-
-        static::assertSame('https://example.com/assets/foo.abcde.css', $solved);
+        static::assertSame("{$this->baseUrl}/foo.abcde.css", $solved);
     }
 
     /**
-     * @param bool $alt
+     * @test
+     */
+    public function testResolveWithEnabledMinifierButNoMinFoundAndNoAlt(): void
+    {
+        $solver = $this->factorySolver(useAlt: false);
+        $solved = $solver->resolve('foo.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/foo.abcde.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithEnabledMinifierAndNoAlt(): void
+    {
+        $solver = $this->factorySolver(useAlt: false);
+        $solved = $solver->resolve('no-min.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/foo.min.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithEnabledMinifierNoMinFoundAndNoAlt(): void
+    {
+        $solver = $this->factorySolver(useAlt: false);
+        $solved = $solver->resolve('meh.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/meh.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithDisabledMinifierAndAlt(): void
+    {
+        $solver = $this->factorySolver(useAlt: true);
+        $solved = $solver->resolve('bar-hash.css', null);
+
+        static::assertSame("{$this->altBaseUrl}/bar.abcde.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithDisabledMinifierAndAltPathNonInManifest(): void
+    {
+        $solver = $this->factorySolver(useAlt: true);
+        $solved = $solver->resolve('bar.css', null);
+
+        static::assertSame("{$this->altBaseUrl}/bar.min.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithEnabledMinifierAndAltPathNonInManifest(): void
+    {
+        $solver = $this->factorySolver(useAlt: true);
+        $solved = $solver->resolve('bar.css', MinifyResolver::new());
+
+        static::assertSame("{$this->altBaseUrl}/bar.min.css", $solved);
+    }
+
+    /**
+     * @test
+     */
+    public function testResolveWithEnabledMinifierButNoMinFoundAndAlt(): void
+    {
+        $solver = $this->factorySolver(useAlt: true);
+        $solved = $solver->resolve('foo.css', MinifyResolver::new());
+
+        static::assertSame("{$this->baseUrl}/foo.abcde.css", $solved);
+    }
+
+    /**
+     * @param bool $useAlt
      * @return ManifestUrlResolver
      */
-    private function createSolver(bool $alt = false): ManifestUrlResolver
+    private function factorySolver(bool $useAlt): ManifestUrlResolver
     {
-        $args = [getenv('FIXTURES_DIR'), 'https://example.com/assets'];
-        if ($alt) {
-            $args[] = getenv('FIXTURES_DIR') . '/alt';
-            $args[] = 'https://example.com/alt/assets';
-        }
-
-        $context = new WpContext(...$args);
-
-        return new ManifestUrlResolver(
-            new DirectUrlResolver($context),
-            getenv('FIXTURES_DIR') . '/manifest.json'
+        return ManifestUrlResolver::new(
+            DirectUrlResolver::new($this->factoryContext($useAlt, null)),
+            static::fixturesPath('/manifest.json')
         );
     }
 }

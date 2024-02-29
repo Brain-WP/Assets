@@ -1,34 +1,29 @@
 <?xml version="1.0"?>
 <psalm
-    autoloader="./.psalm/autoloader.php"
-    totallyTyped="true"
-    useDocblockTypes="false"
+    errorLevel="1"
     useDocblockPropertyTypes="true"
     usePhpDocMethodsWithoutMagicCall="true"
     strictBinaryOperands="true"
-    requireVoidReturnType="true"
-    useAssertForType="true"
-    rememberPropertyAssignmentsAfterCall="true"
-    allowPhpStormGenerics="true"
-    allowCoercionFromStringToClassConst="true"
-    allowStringToStandInForClass="false"
-    memoizeMethodCallResults="false"
-    hoistConstants="false"
-    addParamDefaultToDocblockType="false"
-    checkForThrowsInGlobalScope="false"
-    ignoreInternalFunctionFalseReturn="false"
-    ignoreInternalFunctionNullReturn="false"
+    findUnusedBaselineEntry="true"
+    findUnusedCode="false"
     hideExternalErrors="true"
-    allowFileIncludes="true"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns="https://getpsalm.org/schema/config"
     xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
 >
     <projectFiles>
         <directory name="src"/>
+        <ignoreFiles>
+            <directory name="vendor" />
+        </ignoreFiles>
     </projectFiles>
 
-   <issueHandlers>
+    <stubs>
+        <file name="vendor/inpsyde/wp-stubs-versions/latest.php" />
+    </stubs>
+
+    <issueHandlers>
         <MixedAssignment errorLevel="suppress" />
+        <RedundantCastGivenDocblockType errorLevel="suppress" />
     </issueHandlers>
 </psalm>

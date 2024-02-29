@@ -1,99 +1,104 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\Enqueue;
 
 use Brain\Assets\Enqueue\JsEnqueue;
 use Brain\Assets\Tests\TestCase;
-use Brain\Monkey\Functions;
-use Brain\Monkey\Filters;
+use Brain\Assets\Tests\WpAssetsStub;
+use Brain\Monkey;
 
 class JsEnqueueTest extends TestCase
 {
-    public $scriptData = []; // phpcs:ignore
+    private WpAssetsStub|null $wpScripts = null;
 
+    /**
+     * @return void
+     */
     protected function setUp(): void
     {
         parent::setUp();
 
-        $scripts = new class($this)
-        {
-            private $test;
-
-            public function __construct(JsEnqueueTest $test)
-            {
-                $this->test = $test;
-            }
-
-            /**
-             * @param $handle
-             * @param mixed ...$args
-             *
-             * @phpcs:disable
-             */
-            public function add_data($handle, ...$args)
-            {
-                $this->test->scriptData[$handle] = $args;
-            }
-        };
-
-        Functions\when('wp_scripts')->alias(
-            function () use ($scripts) {
-                return $scripts;
+        Monkey\Functions\when('wp_scripts')->alias(
+            function (): WpAssetsStub {
+                $this->wpScripts or $this->wpScripts = new WpAssetsStub();
+                return $this->wpScripts;
             }
         );
     }
 
+    /**
+     * @return void
+     */
     protected function tearDown(): void
     {
-        $this->scriptData = [];
+        $this->wpScripts = null;
         parent::tearDown();
     }
 
-    public function testConditional()
+    /**
+     * @test
+     */
+    public function testConditional(): void
     {
-        $enqueue = new JsEnqueue('h1');
-        $enqueue->withCondition('lt IE 9');
+        JsEnqueue::new('h1')->withCondition('lt IE 9');
 
-        static::assertSame(['conditional', 'lt IE 9'], $this->scriptData['h1']);
+        static::assertSame(['conditional', 'lt IE 9'], $this->wpScripts?->data['h1']);
     }
 
-    public function testBefore()
+    /**
+     * @test
+     */
+    public function testBefore(): void
     {
-        $handle = 'h2';
         $code = 'alert("x");';
+        Monkey\Functions\expect('wp_add_inline_script')
+            ->once()
+            ->with('h2', $code, 'before');
 
-        $enqueue = new JsEnqueue($handle);
-        $enqueue->prependInline($code);
-
-        static::assertSame(['before', $code], $this->scriptData[$handle]);
+        JsEnqueue::new('h2')->prependInline($code);
     }
 
-    public function testAfter()
+    /**
+     * @test
+     */
+    public function testAfter(): void
     {
-        $handle = 'h3';
         $code = 'alert("x");';
+        Monkey\Functions\expect('wp_add_inline_script')
+            ->once()
+            ->with('h3', $code, 'after');
 
-        $enqueue = new JsEnqueue($handle);
-        $enqueue->appendInline($code);
-
-        static::assertSame(['after', $code], $this->scriptData[$handle]);
+        JsEnqueue::new('h3')->appendInline($code);
     }
 
-    public function testLocalize()
+    /**
+     * @test
+     */
+    public function testLocalize(): void
     {
-        $handle = 'h4';
         $name = 'TestData';
         $data = ['foo' => 'bar'];
+        Monkey\Functions\expect('wp_localize_script')->once()->with('h4', $name, $data);
 
-        Functions\expect('wp_localize_script')
-            ->once()
-            ->with($handle, $name, $data);
-
-        $enqueue = new JsEnqueue($handle);
-        $enqueue->localize($name, $data);
+        JsEnqueue::new('h4')->localize($name, $data);
     }
 
-    public function testAttributes()
+    /**
+     * @test
+     */
+    public function testAttributes(): void
     {
         $handle = 'h5';
         $src = 'https://example.com/s1.js';
@@ -109,64 +114,82 @@ class JsEnqueueTest extends TestCase
 
         $tag = $before . '<script src="' . $src . '"></script>' . $after;
 
-        Filters\expectAdded('script_loader_src')
-            ->once()
-            ->whenHappen(
-                function (callable $cb) use (&$scrCb) {
-                    $scrCb = $cb;
-                }
-            );
+        Monkey\Filters\expectAdded('script_loader_src')->once()->whenHappen(
+            static function (callable $callback) use (&$scrCb): void {
+                $scrCb = $callback;
+            }
+        );
 
-        Filters\expectAdded('script_loader_tag')
-            ->once()
-            ->whenHappen(
-                function (callable $cb) use (&$tagCb) {
-                    $tagCb = $cb;
-                }
-            );
+        Monkey\Filters\expectAdded('script_loader_tag')->once()->whenHappen(
+            static function (callable $callback) use (&$tagCb): void {
+                $tagCb = $callback;
+            }
+        );
 
-        Filters\expectApplied('script_loader_src')
-            ->once()
-            ->andReturnUsing(
-                function ($scr, $handle) use (&$scrCb) {
-                    return $scrCb($scr, $handle);
-                }
-            );
+        Monkey\Filters\expectApplied('script_loader_src')->once()->andReturnUsing(
+            static function (string $scr, string $handle) use (&$scrCb): mixed {
+                /** @var callable $scrCb */
+                return $scrCb($scr, $handle);
+            }
+        );
 
-        Filters\expectApplied('script_loader_tag')
-            ->once()
-            ->andReturnUsing(
-                function ($tag, $handle) use (&$tagCb) {
-                    return $tagCb($tag, $handle);
-                }
-            );
-
-        Functions\when('esc_attr')->returnArg();
+        Monkey\Filters\expectApplied('script_loader_tag')->once()->andReturnUsing(
+            static function (string $tag, string $handle) use (&$tagCb): mixed {
+                /** @var callable $tagCb */
+                return $tagCb($tag, $handle);
+            }
+        );
 
         $newSrc = 'https://example.com/replaced.js';
 
-        $enqueue = new JsEnqueue($handle);
-        $enqueue
+        JsEnqueue::new($handle)
             ->useDefer()
             ->useAsync()
             ->useAttribute('data-test', 'Test me!')
             ->useAttribute('async', 'true')
             ->useAttribute('meh', null)
-            ->addFilter(
-                function (string $tag) use ($src, $newSrc) {
-                    return str_replace($src, $newSrc, $tag);
-                }
-            );
+            ->addFilter(static function (string $tag) use ($src, $newSrc): string {
+                return str_replace($src, $newSrc, $tag);
+            });
 
         apply_filters('script_loader_src', $src, $handle);
         $filtered = apply_filters('script_loader_tag', $tag, $handle);
 
         $expected = $before
-            . '<script meh data-test="Test me!" async defer src="'
+            . '<script meh data-test="Test me!" src="'
             . $newSrc
             . '"></script>'
             . $after;
 
+        static::assertSame(['strategy', 'async'], $this->wpScripts?->data[$handle]);
         static::assertSame($expected, $filtered);
+    }
+
+    /**
+     * @test
+     */
+    public function testAsyncDefer(): void
+    {
+        $enqueue = JsEnqueue::new('handle')->useDefer();
+        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+
+        $enqueue->useAsync();
+        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
+
+        $enqueue->useAttribute('defer', null);
+        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+
+        $enqueue->useAttribute('async', 'true');
+        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
+
+        $enqueue->useAttribute('async', 'false');
+        static::assertSame(['strategy', false], $this->wpScripts?->data['handle']);
+
+        $enqueue->useDefer();
+        $enqueue->useDefer();
+        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+
+        $enqueue->useAsync();
+        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
     }
 }

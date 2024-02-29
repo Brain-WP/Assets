@@ -1,111 +1,98 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\Enqueue;
 
 use Brain\Assets\Enqueue\Filters;
 use Brain\Assets\Tests\TestCase;
-use Brain\Monkey\Functions;
 
 class FiltersTest extends TestCase
 {
-    public function testNoCallableDoNothing()
+    /**
+     * @test
+     */
+    public function testNoCallableDoNothing(): void
     {
-        $filters = Filters::forStyles();
+        $filters = Filters::newForStyles();
 
         static::assertSame('foo', $filters->apply('foo'));
     }
 
-    public function testThrowableCauseEmptyString()
+    /**
+     * @test
+     */
+    public function testThrowableIgnored(): void
     {
-        $filters = Filters::forStyles();
-
-        $filters->add(
-            function (string $str): string {
-                return "{$str}-bar";
-            }
-        )->add(
-            function (string $str): string {
-                return "{$str}-baz";
-            }
-        );
+        $filters = Filters::newForStyles()
+            ->add(static fn (string $str): string => "{$str}-bar")
+            ->add(static fn (string $str): string => "{$str}-baz");
 
         static::assertSame('foo-bar-baz', $filters->apply('foo'));
 
-        $filters->add(
-            function () {
-                throw new \Error();
-            }
-        );
+        $filters->add(static fn () => throw new \Error());
 
-        static::assertSame('', $filters->apply('foo'));
+        static::assertSame('foo-bar-baz', $filters->apply('foo'));
     }
 
-    public function testReturningNonStringCauseEmptyString()
+    /**
+     * @test
+     */
+    public function testReturningNonStringIgnored(): void
     {
-        $filters = Filters::forStyles();
+        $filters = Filters::newForStyles()
+            ->add(static fn (string $str): string => "{$str}-bar")
+            ->add(static fn (string $str): array => [$str])
+            ->add(static fn (string $str): string => "{$str}-baz");
 
-        $filters->add(
-            function (string $str): string {
-                return "{$str}-bar";
-            }
-        )->add(
-            function (string $str): array {
-                return [$str];
-            }
-        )->add(
-            function (string $str): string {
-                return "{$str}-baz";
-            }
-        );
-
-        static::assertSame('', $filters->apply('foo'));
+        static::assertSame('foo-bar-baz', $filters->apply('foo'));
     }
 
-    public function testAddAttributeDoNothingIfAttributeExists()
+    /**
+     * @test
+     */
+    public function testAddAttributeDoNothingIfAttributeExists(): void
     {
-        Functions\when('esc_attr')->returnArg();
-
         $tag = '<script src="https://example.com"></script>';
 
-        $filters = Filters::forStyles();
-
-        $filters
-            ->add(
-                function (string $str): string {
-                    return str_replace('<script', '<script async', $str);
-                }
-            )->add(
-                function (string $str): string {
-                    return str_replace('<script', '<script data-foo="bar"', $str);
-                }
-            );
-
-        $filters->addAttribute('async', 'async');
-        $filters->addAttribute('data-foo', 'x');
+        $filters = Filters::newForStyles()
+            ->add(static fn (string $str): string
+                => str_replace('<script', '<script async', $str))
+            ->add(static fn (string $str): string
+                => str_replace('<script', '<script data-foo="bar"', $str))
+            ->addAttribute('async', 'async')
+            ->addAttribute('data-foo', 'x');
 
         $expected = '<script data-foo="bar" async src="https://example.com"></script>';
 
         static::assertSame($expected, $filters->apply($tag));
     }
 
-    public function testRealWordTag()
+    /**
+     * @test
+     */
+    public function testRealWordTag(): void
     {
-        Functions\when('esc_attr')->returnArg();
-
         $tag = '<script src="https://example.com"></script>';
 
-        $filters = Filters::forScripts()
+        $filters = Filters::newForScripts()
             ->addAttribute('defer', null)
             ->addAttribute('foo', 'bar')
             ->addAttribute('async', null)
             ->addAttribute('defer', null)
             ->addAttribute('foo', "baz")
             ->addAttribute('async', null)
-            ->add(
-                function (string $tag): string {
-                    return str_replace('example.com', 'example.it', $tag);
-                }
-            );
+            ->add(static fn (string $tag): string => str_replace('.com', '.it', $tag));
 
         $expected = '<script async foo="bar" defer src="https://example.it"></script>';
 

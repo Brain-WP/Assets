@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     bootstrap="./tests/bootstrap.php"
     backupGlobals="false"
     colors="true"
     convertErrorsToExceptions="true"
     convertNoticesToExceptions="true"
-    convertWarningsToExceptions="true">
+    convertWarningsToExceptions="true"
+    xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd">
+
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+    </coverage>
+
     <testsuites>
         <testsuite name="unit">
             <directory suffix="Test.php">./tests/unit</directory>
         </testsuite>
     </testsuites>
-    <filter>
-        <whitelist processUncoveredFilesFromWhitelist="true">
-            <directory suffix=".php">src</directory>
-        </whitelist>
-    </filter>
+
 </phpunit>

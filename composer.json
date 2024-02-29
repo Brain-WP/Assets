@@ -9,9 +9,27 @@
             "email": "giuseppe.mazzapica@gmail.com"
         }
     ],
-    "minimum-stability": "stable",
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://raw.githubusercontent.com/inpsyde/wp-stubs/main",
+            "only": [
+                "inpsyde/wp-stubs-versions"
+            ]
+        }
+    ],
     "require": {
-        "php": ">= 7.1"
+        "php": ">= 8.0 < 8.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6.16",
+        "brain/monkey": "^2.6.1",
+        "inpsyde/php-coding-standards": "^2@dev",
+        "phpcompatibility/php-compatibility": "^10@dev",
+        "vimeo/psalm": "^5.22.0",
+        "inpsyde/wp-stubs-versions": "dev-latest"
     },
     "autoload": {
         "psr-4": {
@@ -24,18 +42,21 @@
             "Brain\\Assets\\Tests\\Unit\\": "tests/unit/"
         }
     },
-    "require-dev": {
-        "phpunit/phpunit": "^8",
-        "brain/monkey": "^2",
-        "squizlabs/php_codesniffer": "3.2.*",
-        "inpsyde/php-coding-standards": "0.*",
-        "vimeo/psalm": "^3"
+    "config": {
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "composer/*": true,
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
     },
     "scripts": {
+        "cs": "@php ./vendor/squizlabs/php_codesniffer/bin/phpcs",
+        "psalm": "@php ./vendor/vimeo/psalm/psalm --no-suggestions --report-show-info=false --find-unused-psalm-suppress --no-diff --no-cache --no-file-cache --output-format=compact",
+        "tests": "@php ./vendor/phpunit/phpunit/phpunit --no-coverage",
         "qa": [
-            "sh ./vendor/bin/phpcs",
-            "sh ./vendor/bin/psalm",
-            "sh ./vendor/bin/phpunit"
+            "@cs",
+            "@psalm",
+            "@tests"
         ]
     }
 }

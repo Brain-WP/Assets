@@ -1,4 +1,16 @@
-<?php declare(strict_types=1); # -*- coding: utf-8 -*-
+<?php
+
+/*
+ * This file is part of the Brain Assets package.
+ *
+ * Licensed under MIT License (MIT)
+ * Copyright (c) 2024 Giuseppe Mazzapica and contributors.
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
 
 namespace Brain\Assets\Tests\Unit\Context;
 
@@ -6,67 +18,80 @@ use Brain\Assets\Context\WpContext;
 use Brain\Assets\Tests\TestCase;
 use Brain\Monkey\Functions;
 
+/**
+ * @runTestsInSeparateProcesses
+ */
 class WpContextTest extends TestCase
 {
     /**
-     * @runInSeparateProcess
+     * @test
      */
-    public function testDebugViaScriptDebug()
+    public function testDebugViaScriptDebug(): void
     {
         define('SCRIPT_DEBUG', true);
         define('WP_DEBUG', false);
 
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertTrue($context->isDebug());
     }
 
     /**
-     * @runInSeparateProcess
+     * @test
      */
-    public function testDebugViaWpDebug()
+    public function testDebugViaWpDebug(): void
     {
         define('WP_DEBUG', true);
 
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertTrue($context->isDebug());
     }
 
     /**
-     * @runInSeparateProcess
+     * @test
      */
-    public function testNoDebugViaScriptDebug()
+    public function testNoDebugViaScriptDebug(): void
     {
         define('SCRIPT_DEBUG', false);
         define('WP_DEBUG', true);
 
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertFalse($context->isDebug());
     }
 
-    public function testForcedDebug()
+    /**
+     * @test
+     */
+    public function testForcedDebug(): void
     {
-        $debug = WpContext::createWithDebug(__DIR__, 'https://example.com');
-        $noDebug = WpContext::createWithNoDebug(__DIR__, 'https://example.com');
+        $debug = WpContext::newWithDebug('test1', __DIR__, 'https://example.com');
+        $noDebug = WpContext::newWithNoDebug('test2', __DIR__, 'https://example.com');
 
         static::assertTrue($debug->isDebug());
         static::assertFalse($noDebug->isDebug());
     }
 
-    public function testBasePaths()
+    /**
+     * @test
+     */
+    public function testBasePaths(): void
     {
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertSame('https://example.com/', $context->baseUrl());
-        static::assertSame(__DIR__ . '/', $context->basePath());
+        static::assertSame(str_replace('\\', '/', __DIR__) . '/', $context->basePath());
         static::assertFalse($context->hasAlternative());
     }
 
-    public function testAltPaths()
+    /**
+     * @test
+     */
+    public function testAltPaths(): void
     {
-        $context = new WpContext(
+        $context = WpContext::new(
+            'test',
             __DIR__,
             'https://example.com',
             __DIR__ . '/foo/bar/',
@@ -74,22 +99,26 @@ class WpContextTest extends TestCase
         );
 
         static::assertSame('https://example.com/', $context->baseUrl());
-        static::assertSame(__DIR__ . '/', $context->basePath());
+        static::assertSame(str_replace('\\', '/', __DIR__) . '/', $context->basePath());
         static::assertSame('https://example.com/foo/', $context->altBaseUrl());
-        static::assertSame(__DIR__ . '/foo/bar/', $context->altBasePath());
+        static::assertSame(str_replace('\\', '/', __DIR__) . '/foo/bar/', $context->altBasePath());
         static::assertTrue($context->hasAlternative());
     }
 
-    public function testHasAlternativeRequireBoth()
+    /**
+     * @test
+     */
+    public function testHasAlternativeRequireBoth(): void
     {
-        $context1 = new WpContext(
+        $context1 = WpContext::new(
+            'test',
             __DIR__,
             'https://example.com',
             null,
             'https://example.com/foo/'
         );
 
-        $context2 = new WpContext(
+        $context2 = WpContext::new(
             __DIR__,
             'https://example.com',
             __DIR__ . '/foo/bar/'
@@ -99,20 +128,24 @@ class WpContextTest extends TestCase
         static::assertFalse($context2->hasAlternative());
     }
 
-    public function testIsSecure()
+    /**
+     * @test
+     */
+    public function testIsSecure(): void
     {
-        Functions\when('is_ssl')->justReturn(true);
-
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertTrue($context->isSecure());
     }
 
-    public function testIsNotSecure()
+    /**
+     * @test
+     */
+    public function testIsNotSecure(): void
     {
         Functions\when('is_ssl')->justReturn('');
 
-        $context = new WpContext(__DIR__, 'https://example.com');
+        $context = WpContext::new('test', __DIR__, 'https://example.com');
 
         static::assertFalse($context->isSecure());
     }

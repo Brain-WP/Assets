@@ -1,0 +1,1 @@
+<?php return array('dependencies' => array('mhh-js-api', 'react', 'react-dom', 'wp-components', 'wp-element', 'wp-i18n'), 'version' => 'a29c9d677e174811e603');

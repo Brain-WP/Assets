@@ -39,7 +39,7 @@ concurrency:
 jobs:
   lint-php:
     uses: inpsyde/reusable-workflows/.github/workflows/lint-php.yml@main
-    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != Run PHPCS only') && (github.event.inputs.jobs != 'Run Psalm only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != 'Run PHPCS only') && (github.event.inputs.jobs != 'Run Psalm only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
     strategy:
       matrix:
         php: [ '8.0', '8.1', '8.2', '8.3' ]
@@ -47,13 +47,13 @@ jobs:
       PHP_VERSION: ${{ matrix.php }}
 
   coding-standards-analysis-php:
-    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != Run lint only') && (github.event.inputs.jobs != 'Run Psalm only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != 'Run lint only') && (github.event.inputs.jobs != 'Run Psalm only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
     uses: inpsyde/reusable-workflows/.github/workflows/coding-standards-php.yml@main
     with:
       PHP_VERSION: '8.0'
 
   static-code-analysis-php:
-    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != Run PHPCS only') && (github.event.inputs.jobs != 'Run lint only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
+    if: ${{ (github.event_name != 'workflow_dispatch') || ((github.event.inputs.jobs != 'Run PHPCS only') && (github.event.inputs.jobs != 'Run lint only') && (github.event.inputs.jobs != 'Run unit tests only')) }}
     uses: inpsyde/reusable-workflows/.github/workflows/static-analysis-php.yml@main
     strategy:
       matrix:

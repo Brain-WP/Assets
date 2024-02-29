@@ -152,7 +152,7 @@ final class WpContext implements Context
      */
     protected static function globalDebug(): bool
     {
-        /** @psalm-suppress TypeDoesNotContainType */
+        /** @psalm-suppress RedundantCast, TypeDoesNotContainType */
         return defined('SCRIPT_DEBUG') ? (bool) \SCRIPT_DEBUG : (defined('WP_DEBUG') && \WP_DEBUG);
     }
 

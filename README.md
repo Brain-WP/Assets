@@ -1,8 +1,9 @@
 # Brain Assets
 
-[![license](https://img.shields.io/packagist/l/brain/assets.svg?style=flat-square)](http://opensource.org/licenses/MIT)
-[![packagist](https://img.shields.io/packagist/v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
-[![PHP version requirement](https://img.shields.io/packagist/php-v/brain/assets.svg?style=flat-square)](https://packagist.org/packages/brain/assets)
+[![license](https://img.shields.io/packagist/l/brain/assets.svg)](http://opensource.org/licenses/MIT)
+[![packagist](https://img.shields.io/packagist/v/brain/assets.svg)](https://packagist.org/packages/brain/assets)
+[![PHP version requirement](https://img.shields.io/packagist/php-v/brain/assets.svg)](https://packagist.org/packages/brain/assets)
+[![Quality Assurance](https://github.com/Brain-WP/Assets/actions/workflows/qa.yml/badge.svg)](https://github.com/Brain-WP/Assets/actions/workflows/qa.yml)
 
 
 

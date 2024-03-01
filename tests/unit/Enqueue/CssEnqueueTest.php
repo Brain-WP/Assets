@@ -17,8 +17,7 @@ namespace Brain\Assets\Tests\Unit\Enqueue;
 use Brain\Assets\Enqueue\CssEnqueue;
 use Brain\Assets\Tests\TestCase;
 use Brain\Assets\Tests\WpAssetsStub;
-use Brain\Monkey\Functions;
-use Brain\Monkey\Filters;
+use Brain\Monkey;
 
 class CssEnqueueTest extends TestCase
 {
@@ -30,13 +29,7 @@ class CssEnqueueTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        Functions\when('wp_styles')->alias(
-            function (): WpAssetsStub {
-                $this->wpStyles or $this->wpStyles = new WpAssetsStub();
-                return $this->wpStyles;
-            }
-        );
+        $this->wpStyles = $this->mockWpDependencies('style');
     }
 
     /**
@@ -55,7 +48,7 @@ class CssEnqueueTest extends TestCase
     {
         CssEnqueue::new('h1')->withCondition('lt IE 9');
 
-        static::assertSame(['conditional', 'lt IE 9'], $this->wpStyles?->data['h1']);
+        static::assertSame('lt IE 9', $this->wpStyles?->data['h1']['conditional'] ?? null);
     }
 
     /**
@@ -65,7 +58,7 @@ class CssEnqueueTest extends TestCase
     {
         CssEnqueue::new('h2')->asAlternate();
 
-        static::assertSame(['alt', true], $this->wpStyles?->data['h2']);
+        static::assertSame(true, $this->wpStyles?->data['h2']['alt'] ?? null);
     }
 
     /**
@@ -75,7 +68,7 @@ class CssEnqueueTest extends TestCase
     {
         CssEnqueue::new('h3')->withTitle('Hello');
 
-        static::assertSame(['title', 'Hello'], $this->wpStyles?->data['h3']);
+        static::assertSame('Hello', $this->wpStyles?->data['h3']['title'] ?? null);
     }
 
     /**
@@ -85,7 +78,7 @@ class CssEnqueueTest extends TestCase
     {
         $inline = 'p { display:none }';
 
-        Functions\expect('wp_add_inline_style')->once()->with('h4', $inline);
+        Monkey\Functions\expect('wp_add_inline_style')->once()->with('h4', $inline);
 
         CssEnqueue::new('h4')->appendInline($inline);
     }
@@ -100,7 +93,7 @@ class CssEnqueueTest extends TestCase
         /** @var callable|null $filterCallback */
         $filterCallback = null;
 
-        Filters\expectAdded('style_loader_tag')
+        Monkey\Filters\expectAdded('style_loader_tag')
             ->once()
             ->whenHappen(
                 static function (callable $callback) use (&$filterCallback): void {
@@ -108,7 +101,7 @@ class CssEnqueueTest extends TestCase
                 }
             );
 
-        Filters\expectApplied('style_loader_tag')
+        Monkey\Filters\expectApplied('style_loader_tag')
             ->once()
             ->with($tag, $handle)
             ->andReturnUsing(

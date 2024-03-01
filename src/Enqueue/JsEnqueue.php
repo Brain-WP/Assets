@@ -63,9 +63,9 @@ class JsEnqueue extends AbstractEnqueue
 
     /**
      * @param string $condition
-     * @return JsEnqueue
+     * @return static
      */
-    public function withCondition(string $condition): JsEnqueue
+    public function withCondition(string $condition): static
     {
         wp_scripts()->add_data($this->handle, 'conditional', $condition);
 
@@ -74,9 +74,9 @@ class JsEnqueue extends AbstractEnqueue
 
     /**
      * @param string $jsCode
-     * @return JsEnqueue
+     * @return static
      */
-    public function prependInline(string $jsCode): JsEnqueue
+    public function prependInline(string $jsCode): static
     {
         wp_add_inline_script($this->handle, $jsCode, 'before');
 
@@ -85,9 +85,9 @@ class JsEnqueue extends AbstractEnqueue
 
     /**
      * @param string $jsCode
-     * @return JsEnqueue
+     * @return static
      */
-    public function appendInline(string $jsCode): JsEnqueue
+    public function appendInline(string $jsCode): static
     {
         wp_add_inline_script($this->handle, $jsCode, 'after');
         $this->removeStrategy();
@@ -98,9 +98,9 @@ class JsEnqueue extends AbstractEnqueue
     /**
      * @param string $objectName
      * @param array $data
-     * @return JsEnqueue
+     * @return static
      */
-    public function localize(string $objectName, array $data): JsEnqueue
+    public function localize(string $objectName, array $data): static
     {
         wp_localize_script($this->handle, $objectName, $data);
 
@@ -108,31 +108,46 @@ class JsEnqueue extends AbstractEnqueue
     }
 
     /**
-     * @return JsEnqueue
+     * @param Strategy $strategy
+     * @return static
      */
-    public function useAsync(): JsEnqueue
+    public function useStrategy(Strategy $strategy): static
     {
-        $this->useStrategyAttribute(Strategy::ASYNC);
+        $this->strategy = $strategy;
+        $strategyName = match (true) {
+            $strategy->isDefer() => Strategy::DEFER,
+            $strategy->isAsync() => Strategy::ASYNC,
+            default => false,
+        };
+
+        wp_scripts()->add_data($this->handle, 'strategy', $strategyName);
+        wp_scripts()->add_data($this->handle, 'group', $strategy->inFooter() ? 1 : false);
 
         return $this;
     }
 
     /**
-     * @return JsEnqueue
+     * @return static
      */
-    public function useDefer(): JsEnqueue
+    public function useAsync(): static
     {
-        $this->useStrategyAttribute(Strategy::DEFER);
+        return $this->useStrategy(Strategy::newAsync($this->strategy?->inFooter() ?? false));
+    }
 
-        return $this;
+    /**
+     * @return static
+     */
+    public function useDefer(): static
+    {
+        return $this->useStrategy(Strategy::newDefer($this->strategy?->inFooter() ?? false));
     }
 
     /**
      * @param string $name
      * @param string $value
-     * @return JsEnqueue
+     * @return static
      */
-    public function useAttribute(string $name, ?string $value): JsEnqueue
+    public function useAttribute(string $name, ?string $value): static
     {
         $nameLower = strtolower($name);
         if (($nameLower !== 'async') && ($nameLower !== 'defer')) {
@@ -152,29 +167,13 @@ class JsEnqueue extends AbstractEnqueue
 
     /**
      * @param callable $callback
-     * @return JsEnqueue
+     * @return static
      */
-    public function addFilter(callable $callback): JsEnqueue
+    public function addFilter(callable $callback): static
     {
         $this->setupFilters()->add($callback);
 
         return $this;
-    }
-
-    /**
-     * @param 'async'|'defer' $strategy
-     * @return void
-     *
-     * phpcs:disable Generic.Metrics.CyclomaticComplexity
-     */
-    private function useStrategyAttribute(string $strategyName): void
-    {
-        wp_scripts()->add_data($this->handle, 'strategy', $strategyName);
-
-        $this->strategy = match ($strategyName) {
-            Strategy::ASYNC => Strategy::newAsync($this->strategy?->inFooter() ?? false),
-            Strategy::DEFER => Strategy::newDefer($this->strategy?->inFooter() ?? false),
-        };
     }
 
     /**

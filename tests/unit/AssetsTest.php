@@ -18,7 +18,7 @@ use Brain\Assets\Assets;
 use Brain\Assets\Enqueue\Enqueue;
 use Brain\Assets\Tests\AssetsTestCase;
 use Brain\Assets\Tests\TestCase;
-use Brain\Monkey\Functions;
+use Brain\Monkey;
 
 /**
  * @ runTestsInSeparateProcesses
@@ -150,7 +150,9 @@ class AssetsTest extends TestCase
      */
     public function testPluginEnqueueCss(): void
     {
-        Functions\expect('wp_enqueue_style')
+        $this->mockWpDependencies('style');
+
+        Monkey\Functions\expect('wp_enqueue_style')
             ->once()
             ->with('foo-admin', \Mockery::type('string'), ['jquery'], null, 'all')
             ->andReturnUsing(
@@ -175,7 +177,9 @@ class AssetsTest extends TestCase
      */
     public function testPluginEnqueueCssNoVerNoMin(): void
     {
-        Functions\expect('wp_enqueue_style')
+        $this->mockWpDependencies('style');
+
+        Monkey\Functions\expect('wp_enqueue_style')
             ->once()
             ->with('foo-admin', \Mockery::type('string'), ['jquery'], null, 'all')
             ->andReturnUsing(
@@ -200,7 +204,9 @@ class AssetsTest extends TestCase
      */
     public function testPluginEnqueueCssMinNotFound(): void
     {
-        Functions\expect('wp_enqueue_style')
+        $this->mockWpDependencies('style');
+
+        Monkey\Functions\expect('wp_enqueue_style')
             ->once()
             ->with('foo-no-min', \Mockery::type('string'), [], null, 'screen')
             ->andReturnUsing(
@@ -358,7 +364,9 @@ class AssetsTest extends TestCase
      */
     public function testThemeEnqueueScript(): void
     {
-        Functions\expect('wp_enqueue_script')
+        $this->mockWpDependencies('script');
+
+        Monkey\Functions\expect('wp_enqueue_script')
             ->once()
             ->with('parent-theme', \Mockery::type('string'), ['jquery'], null, true)
             ->andReturnUsing(
@@ -371,7 +379,7 @@ class AssetsTest extends TestCase
                 }
             );
 
-        Functions\expect('wp_localize_script')
+        Monkey\Functions\expect('wp_localize_script')
             ->once()
             ->with('parent-theme', 'ThemeData', ['foo' => 'bar']);
 
@@ -486,7 +494,7 @@ class AssetsTest extends TestCase
     }
 
     /**
-     * @return void
+     * @test
      */
     public function testChildThemeFromExternalAbsoluteUrl(): void
     {
@@ -499,7 +507,7 @@ class AssetsTest extends TestCase
     }
 
     /**
-     * @return void
+     * @test
      */
     public function testChildThemeFromExternalAbsoluteUrlWithoutForceSecure(): void
     {
@@ -533,7 +541,9 @@ class AssetsTest extends TestCase
      */
     public function testLibraryEnqueue(): void
     {
-        Functions\expect('wp_enqueue_style')
+        $this->mockWpDependencies('style');
+
+        Monkey\Functions\expect('wp_enqueue_style')
             ->once()
             ->with('foo', "{$this->baseUrl}/foo.abcde.css", [], null, 'screen');
 
@@ -546,9 +556,70 @@ class AssetsTest extends TestCase
     /**
      * @test
      */
+    public function testLibraryEnqueueHappenOnce(): void
+    {
+        $this->mockWpDependencies('style');
+        Monkey\Functions\expect('wp_register_style')->once();
+        Monkey\Functions\expect('wp_enqueue_style')->once();
+
+        $assets = $this->factoryLibraryAssets();
+
+        $assets->registerStyle('foo');
+        $assets->registerStyle('foo.css');
+        $assets->enqueueStyle('foo');
+        $assets->enqueueStyle('foo.css');
+        $assets->registerStyle('foo');
+        $assets->enqueueStyle('foo');
+    }
+
+    /**
+     * @test
+     */
+    public function testLibraryEnqueueRegisteredFromWp(): void
+    {
+        $this->mockWpDependencies('style', ['registered' => [['lib-foo']]]);
+        $this->mockWpDependencies('script', ['registered' => [['lib-some-script']]]);
+
+        Monkey\Functions\expect('wp_dequeue_style')->once()->with('lib-foo');
+        Monkey\Functions\expect('wp_deregister_style')->once()->with('lib-foo');
+        Monkey\Functions\expect('wp_dequeue_script')->once()->with('lib-some-script');
+        Monkey\Functions\expect('wp_deregister_script')->once()->with('lib-some-script');
+        Monkey\Functions\expect('wp_enqueue_style')->once();
+        Monkey\Functions\expect('wp_enqueue_script')->once();
+
+        $assets = $this->factoryLibraryAssets();
+
+        $assets->enqueueStyle('foo');
+        $assets->enqueueScript('some-script');
+
+        static::assertSame('lib-foo', $assets->collection()->first(Assets::CSS)?->handle());
+        static::assertSame('lib-some-script', $assets->collection()->first(Assets::JS)?->handle());
+    }
+
+    /**
+     * @test
+     */
+    public function testLibraryEnqueueEnqueuedFromWp(): void
+    {
+        $this->mockWpDependencies('style', ['enqueued' => [['lib-foo']]]);
+
+        Monkey\Functions\expect('wp_dequeue_style')->once()->with('lib-foo');
+        Monkey\Functions\expect('wp_deregister_style')->once()->with('lib-foo');
+        Monkey\Functions\expect('wp_enqueue_style')->once();
+
+        $assets = $this->factoryLibraryAssets();
+
+        $assets->enqueueStyle('foo');
+    }
+
+    /**
+     * @test
+     */
     public function testLibraryEnqueueFromDepInfo(): void
     {
-        Functions\expect('wp_enqueue_script')
+        $this->mockWpDependencies('script');
+
+        Monkey\Functions\expect('wp_enqueue_script')
             ->once()
             ->with(
                 'lib-some-script',
@@ -568,7 +639,9 @@ class AssetsTest extends TestCase
      */
     public function testLibraryEnqueueFromDepInfoWithStrategy(): void
     {
-        Functions\expect('wp_enqueue_script')
+        $this->mockWpDependencies('script');
+
+        Monkey\Functions\expect('wp_enqueue_script')
             ->once()
             ->with(
                 'lib-some-script',
@@ -588,9 +661,11 @@ class AssetsTest extends TestCase
      */
     public function testRegisterAndEnqueueManifestPlusDependencyDataExtraction(): void
     {
+        $this->mockWpDependencies('script');
+
         $assets = $this->factoryManifestsAssets()->useDependencyExtractionData();
 
-        Functions\expect('wp_register_script')
+        Monkey\Functions\expect('wp_register_script')
             ->once()
             ->with(
                 'hello-world-block-a',
@@ -600,7 +675,7 @@ class AssetsTest extends TestCase
                 ['in_footer' => true]
             );
 
-        Functions\expect('wp_enqueue_script')
+        Monkey\Functions\expect('wp_enqueue_script')
             ->once()
             ->with('hello-world-block-a');
 
@@ -629,6 +704,9 @@ class AssetsTest extends TestCase
             'hello-world-front-style',
         ];
 
+        $this->mockWpDependencies('style');
+        $this->mockWpDependencies('script');
+
         $aString = \Mockery::type('string');
         /** @psalm-suppress InvalidArgument */
         $aHandle = \Mockery::anyOf(...$handles);
@@ -646,7 +724,7 @@ class AssetsTest extends TestCase
             static::assertSame($query, 'v=a29c9d677e174811e603');
         };
 
-        Functions\expect('wp_register_script')
+        Monkey\Functions\expect('wp_register_script')
             ->twice()
             ->with($aHandle, $aString, [], null, ['in_footer' => true])
             ->andReturnUsing($dataCheck)
@@ -655,13 +733,13 @@ class AssetsTest extends TestCase
             ->with($aHandle, $aString, $deps, null, ['in_footer' => true])
             ->andReturnUsing($dataCheck);
 
-        Functions\expect('wp_register_style')
+        Monkey\Functions\expect('wp_register_style')
             ->times(4)
             ->with($aHandle, $aString, [], null, 'all')
             ->andReturnUsing($dataCheck);
 
-        Functions\expect('wp_enqueue_script')->times(4)->with($aHandle);
-        Functions\expect('wp_enqueue_style')->times(4)->with($aHandle);
+        Monkey\Functions\expect('wp_enqueue_script')->times(4)->with($aHandle);
+        Monkey\Functions\expect('wp_enqueue_style')->times(4)->with($aHandle);
 
         $collection = $this
             ->factoryManifestsAssets()
@@ -696,17 +774,119 @@ class AssetsTest extends TestCase
     }
 
     /**
+     * @test
+     */
+    public function testAssetsCollection(): void
+    {
+        $this->mockWpDependencies('style');
+        $this->mockWpDependencies('script');
+
+        $assets = $this->factoryLibraryAssets();
+
+        Monkey\Functions\expect('wp_register_style')->once();
+        Monkey\Functions\expect('wp_enqueue_style')->once();
+        Monkey\Functions\expect('wp_dequeue_style')->once();
+        Monkey\Functions\expect('wp_deregister_style')->once();
+
+        $onDeregister = null;
+        Monkey\Actions\expectAdded('brain.assets.deregistered')
+            ->once()
+            ->whenHappen(static function (callable $callback) use (&$onDeregister): void {
+                $onDeregister = $callback;
+            });
+        Monkey\Actions\expectDone('brain.assets.deregistered')
+            ->once()
+            ->with(\Mockery::type(Enqueue::class))
+            ->whenHappen(static function (Enqueue $enqueue) use (&$onDeregister): void {
+                /** @var callable $onDeregister */
+                $onDeregister($enqueue);
+            });
+
+        $enqueue = $assets->registerStyle('foo');
+        $retrieved = $assets->collection()->cssOnly()->first();
+
+        static::assertSame($enqueue, $retrieved);
+        static::assertFalse($retrieved->isEnqueued());
+
+        $enqueue->enqueue();
+
+        static::assertTrue($retrieved->isEnqueued());
+        static::assertTrue($assets->collection()->cssOnly()->first()->isEnqueued());
+
+        $enqueue->deregister();
+
+        static::assertFalse($retrieved->isEnqueued());
+        static::assertCount(0, $assets->collection());
+    }
+
+    /**
+     * @test
+     */
+    public function testAssetsCollectionsFromManifest(): void
+    {
+        $this->mockWpDependencies('style');
+        $this->mockWpDependencies('script');
+        Monkey\Functions\expect('wp_register_style')->times(4);
+        Monkey\Functions\expect('wp_register_script')->times(4);
+
+        $assets = $this->factoryManifestsAssets();
+        $fromManifest = $assets->useDependencyExtractionData()->registerAllFromManifest();
+        $collection = $assets->collection();
+
+        static::assertCount(8, $fromManifest);
+        static::assertCount(8, $collection);
+        static::assertNotSame($fromManifest, $collection);
+        static::assertSame([], $fromManifest->diff($collection)->handles());
+        static::assertSame([], $collection->diff($fromManifest)->handles());
+        static::assertSame($fromManifest->handles(), $collection->merge($fromManifest)->handles());
+    }
+
+    /**
+     * @test
+     */
+    public function testAssetsCollectionsBulkRegistration(): void
+    {
+        $this->mockWpDependencies('style');
+        $this->mockWpDependencies('script');
+        Monkey\Functions\expect('wp_register_script')->times(4);
+        Monkey\Functions\expect('wp_register_style')->times(4);
+        $handles = [
+            'hello-world-admin',
+            'hello-world-admin-style',
+            'hello-world-block-a',
+            'hello-world-block-a-style',
+            'hello-world-block-b',
+            'hello-world-block-b-style',
+            'hello-world-front',
+            'hello-world-front-style',
+        ];
+
+        $assets = $this->factoryManifestsAssets()->useDependencyExtractionData();
+
+        foreach (glob($assets->context()->basePath() . '*.{css,js}', GLOB_BRACE) as $file) {
+            str_ends_with($file, '.css')
+                ? $assets->registerStyle(basename($file, '.css'))
+                : $assets->registerScript(basename($file, '.js'));
+        }
+
+        $collection = $assets->collection();
+
+        static::assertCount(8, $collection);
+        static::assertSame([], array_diff($collection->handles(), $handles));
+    }
+
+    /**
      * @return Assets
      */
     private function factoryPluginAssets(): Assets
     {
         $pluginFilePath = static::fixturesPath('/plugins/foo/plugin.php');
 
-        Functions\expect('plugin_basename')
+        Monkey\Functions\expect('plugin_basename')
             ->with($pluginFilePath)
             ->andReturn('foo/plugin.php');
 
-        Functions\expect('plugins_url')
+        Monkey\Functions\expect('plugins_url')
             ->with('/assets/', $pluginFilePath)
             ->andReturn('http://example.com/wp-content/plugins/foo/assets');
 
@@ -721,9 +901,12 @@ class AssetsTest extends TestCase
         $themePath = static::fixturesPath('/themes/parent');
         $themeDir = '/wp-content/themes/parent';
 
-        Functions\when('get_template')->justReturn('parent');
-        Functions\when('get_template_directory')->justReturn($themePath);
-        Functions\when('get_template_directory_uri')->justReturn('http://example.com' . $themeDir);
+        Monkey\Functions\when('get_template')
+            ->justReturn('parent');
+        Monkey\Functions\when('get_template_directory')
+            ->justReturn($themePath);
+        Monkey\Functions\when('get_template_directory_uri')
+            ->justReturn('http://example.com' . $themeDir);
 
         return Assets::forTheme('/assets')->tryMinUrls();
     }
@@ -733,20 +916,21 @@ class AssetsTest extends TestCase
      */
     private function factoryChildThemeAssets(): Assets
     {
-        $themeFolder = '/wp-content/themes/parent';
-        $childThemeFolder = '/wp-content/themes/child';
-
         $baseUrl = 'https://example.com';
         $basePath = static::fixturesPath();
 
-        Functions\when('get_template')->justReturn('parent');
-        Functions\when('get_stylesheet')->justReturn('child');
+        $themeFolder = '/wp-content/themes/parent';
+        $childThemeFolder = '/wp-content/themes/child';
+        $childThemeUrl = $baseUrl . $childThemeFolder;
 
-        Functions\when('get_stylesheet_directory')->justReturn($basePath . '/themes/child');
-        Functions\when('get_stylesheet_directory_uri')->justReturn($baseUrl . $childThemeFolder);
+        Monkey\Functions\when('get_template')->justReturn('parent');
+        Monkey\Functions\when('get_stylesheet')->justReturn('child');
 
-        Functions\when('get_template_directory')->justReturn($basePath . '/themes/parent');
-        Functions\when('get_template_directory_uri')->justReturn($baseUrl . $themeFolder);
+        Monkey\Functions\when('get_stylesheet_directory')->justReturn($basePath . '/themes/child');
+        Monkey\Functions\when('get_stylesheet_directory_uri')->justReturn($childThemeUrl);
+
+        Monkey\Functions\when('get_template_directory')->justReturn($basePath . '/themes/parent');
+        Monkey\Functions\when('get_template_directory_uri')->justReturn($baseUrl . $themeFolder);
 
         return Assets::forChildTheme('/', '/assets');
     }

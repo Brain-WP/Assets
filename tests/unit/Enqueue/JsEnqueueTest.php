@@ -29,13 +29,7 @@ class JsEnqueueTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        Monkey\Functions\when('wp_scripts')->alias(
-            function (): WpAssetsStub {
-                $this->wpScripts or $this->wpScripts = new WpAssetsStub();
-                return $this->wpScripts;
-            }
-        );
+        $this->wpScripts = $this->mockWpDependencies('script');
     }
 
     /**
@@ -54,7 +48,7 @@ class JsEnqueueTest extends TestCase
     {
         JsEnqueue::new('h1')->withCondition('lt IE 9');
 
-        static::assertSame(['conditional', 'lt IE 9'], $this->wpScripts?->data['h1']);
+        static::assertSame('lt IE 9', $this->wpScripts()->data['h1']['conditional'] ?? null);
     }
 
     /**
@@ -161,7 +155,7 @@ class JsEnqueueTest extends TestCase
             . '"></script>'
             . $after;
 
-        static::assertSame(['strategy', 'async'], $this->wpScripts?->data[$handle]);
+        static::assertSame('async', $this->wpScripts()->data[$handle]['strategy'] ?? null);
         static::assertSame($expected, $filtered);
     }
 
@@ -171,25 +165,35 @@ class JsEnqueueTest extends TestCase
     public function testAsyncDefer(): void
     {
         $enqueue = JsEnqueue::new('handle')->useDefer();
-        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+        static::assertSame('defer', $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useAsync();
-        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
+        static::assertSame('async', $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useAttribute('defer', null);
-        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+        static::assertSame('defer', $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useAttribute('async', 'true');
-        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
+        static::assertSame('async', $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useAttribute('async', 'false');
-        static::assertSame(['strategy', false], $this->wpScripts?->data['handle']);
+        static::assertSame(false, $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useDefer();
         $enqueue->useDefer();
-        static::assertSame(['strategy', 'defer'], $this->wpScripts?->data['handle']);
+        static::assertSame('defer', $this->wpScripts()->data['handle']['strategy'] ?? null);
 
         $enqueue->useAsync();
-        static::assertSame(['strategy', 'async'], $this->wpScripts?->data['handle']);
+        static::assertSame('async', $this->wpScripts()->data['handle']['strategy'] ?? null);
+    }
+
+    /**
+     * @return WpAssetsStub
+     */
+    private function wpScripts(): WpAssetsStub
+    {
+        assert($this->wpScripts instanceof WpAssetsStub);
+
+        return $this->wpScripts;
     }
 }

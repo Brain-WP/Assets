@@ -66,6 +66,7 @@ abstract class AbstractEnqueue implements Enqueue
         $this->isCss()
             ? wp_deregister_style($this->handle())
             : wp_deregister_script($this->handle());
+        do_action('brain.assets.deregistered', $this);
     }
 
     /**

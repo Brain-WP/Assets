@@ -42,6 +42,11 @@ interface Enqueue
     public function dequeue(): static;
 
     /**
+     * @return void
+     */
+    public function deregister(): void;
+
+    /**
      * @return static
      */
     public function enqueue(): static;

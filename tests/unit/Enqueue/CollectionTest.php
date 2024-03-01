@@ -228,6 +228,8 @@ class CollectionTest extends TestCase
      */
     private function factoryCollection(): Collection
     {
+        $this->mockWpDependencies('style');
+        $this->mockWpDependencies('script');
         Monkey\Functions\expect('wp_register_style')->times(4);
         Monkey\Functions\expect('wp_register_script')->times(4);
 

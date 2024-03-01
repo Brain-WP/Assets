@@ -195,6 +195,29 @@ Please review [`Collection` source code](./src/Enqueue/Collection.php) to find o
 
 
 
+### Retrieving registered/enqueued assets' collection
+
+The `Assets` class provides a `Assets::collection()` method that returns a `Collection` instance with all the assets that have been enqueued/registered.  The collection allows us to act on individual assets (retrieved via `Collection::oneByName()` or `Collection::oneByHandle()`) or collectively on all or some assets (filtered using one of the many methods `Collection` provides, see above). 
+
+Here's an example on how this could be leveraged for obtaining "automatic bulk registration" for all our assets in few lines of code that loop files in the assets directory:
+
+```php
+$assets = Assets::forTheme('/dist')->useDependencyExtractionData();
+
+foreach (glob($assets->context()->basePath() . '*.{css,js}', GLOB_BRACE) as $file) {
+    str_ends_with($file, '.css')
+        ? $assets->registerStyle(basename($file, '.css'))
+        : $assets->registerScript(basename($file, '.js'));  
+}
+
+add_action('admin_enqueue_scripts'), fn () => $assets->collection()->keep('*-admin')->enqueue());
+add_action('wp_enqueue_scripts'), fn () => $assets->collection()->keep('*-view')->enqueue());
+```
+
+Please note: because `Collection` has an immutable design, do not store the result of `Assets::collection()` but always call that method to retrieve an up-to-date collection.
+
+
+
 
 ### Debug
 

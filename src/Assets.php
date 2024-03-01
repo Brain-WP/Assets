@@ -14,10 +14,6 @@ declare(strict_types=1);
 
 namespace Brain\Assets;
 
-use Brain\Assets\Enqueue\Collection;
-use Brain\Assets\Enqueue\JsEnqueue;
-use Brain\Assets\Enqueue\Strategy;
-
 class Assets
 {
     public const CSS = 'css';
@@ -26,6 +22,7 @@ class Assets
     public const VIDEO = 'videos';
     public const FONT = 'fonts';
 
+    private Enqueue\Collection $collection;
     private UrlResolver\MinifyResolver|null $minifyResolver = null;
     private string $handlePrefix;
     private bool $addVersion = true;
@@ -33,6 +30,7 @@ class Assets
     private bool $useDepExtractionData = false;
     /** @var array<string, list{string, bool}> */
     private array $subFolders = [];
+    private bool $removalConfigured = false;
 
     /**
      * @param string $mainPluginFilePath
@@ -138,6 +136,15 @@ class Assets
     {
         // Store separately from name, so we can enable & disable as well as changing it.
         $this->handlePrefix = $this->context()->name();
+        $this->collection = Enqueue\Collection::new($this);
+    }
+
+    /**
+     * @return Enqueue\Collection
+     */
+    public function collection(): Enqueue\Collection
+    {
+        return clone $this->collection;
     }
 
     /**
@@ -542,8 +549,8 @@ class Assets
      * @param string $name
      * @param string $url
      * @param array $deps
-     * @param Strategy|bool|array|string|null $strategy
-     * @return JsEnqueue
+     * @param Enqueue\Strategy|bool|array|string|null $strategy
+     * @return Enqueue\JsEnqueue
      */
     public function registerExternalScript(
         string $name,
@@ -574,6 +581,42 @@ class Assets
 
     /**
      * @param string $name
+     * @return static
+     */
+    public function dequeueStyle(string $name): static
+    {
+        return $this->deregisterOrDequeue($name, self::CSS, deregister: false);
+    }
+
+    /**
+     * @param string $name
+     * @return static
+     */
+    public function deregisterStyle(string $name): static
+    {
+        return $this->deregisterOrDequeue($name, self::CSS, deregister: true);
+    }
+
+    /**
+     * @param string $name
+     * @return static
+     */
+    public function dequeueScript(string $name): static
+    {
+        return $this->deregisterOrDequeue($name, self::JS, deregister: false);
+    }
+
+    /**
+     * @param string $name
+     * @return static
+     */
+    public function deregisterScript(string $name): static
+    {
+        return $this->deregisterOrDequeue($name, self::JS, deregister: true);
+    }
+
+    /**
+     * @param string $name
      * @return string
      */
     public function handleForName(string $name): string
@@ -591,10 +634,13 @@ class Assets
     /**
      * @param array $jsDeps
      * @param array $cssDeps
-     * @return Collection
+     * @return Enqueue\Collection
      */
-    public function registerAllFromManifest(array $jsDeps = [], array $cssDeps = []): Collection
-    {
+    public function registerAllFromManifest(
+        array $jsDeps = [],
+        array $cssDeps = []
+    ): Enqueue\Collection {
+
         $collection = [];
         $urls = $this->factory->manifestUrlResolver()->resolveAll();
         foreach ($urls as $name => $url) {
@@ -605,7 +651,7 @@ class Assets
             $collection[] = $registered;
         }
 
-        $registeredAll = Collection::new($this, ...$collection);
+        $registeredAll = Enqueue\Collection::new($this, ...$collection);
         do_action('brain.assets.registered-all-from-manifest', $registeredAll);
 
         return $registeredAll;
@@ -627,22 +673,32 @@ class Assets
         string $media
     ): Enqueue\CssEnqueue {
 
+        $isEnqueue = $type === 'enqueue';
         $handle = $this->handleForName($name);
+
+        $existing = $this->maybeRegistered($handle, $isEnqueue, self::CSS);
+        if ($existing instanceof Enqueue\CssEnqueue) {
+            return $existing;
+        }
+
         [$url, $useMinify] = ($url === null)
             ? $this->assetUrlForEnqueue($name, self::CSS)
             : [$this->adjustAbsoluteUrl($url), false];
 
         $deps = $this->prepareDeps($deps, $url, $useMinify);
 
-        $isEnqueue = $type === 'enqueue';
         /** @var callable $callback */
         $callback = $isEnqueue ? 'wp_enqueue_style' : 'wp_register_style';
 
         $callback($handle, $url, $deps, null, $media);
 
-        return $isEnqueue
+        $enqueued = $isEnqueue
             ? Enqueue\CssEnqueue::new($handle)
             : Enqueue\CssEnqueue::newRegistration($handle);
+        $this->collection = $this->collection->append($enqueued);
+        $this->setupRemoval();
+
+        return $enqueued;
     }
 
     /**
@@ -650,7 +706,7 @@ class Assets
      * @param string $name
      * @param string|null $url
      * @param array $deps
-     * @param Strategy|bool|array|string|null $strategy
+     * @param Enqueue\Strategy|bool|array|string|null $strategy
      * @return Enqueue\JsEnqueue
      */
     private function doEnqueueOrRegisterScript(
@@ -661,7 +717,14 @@ class Assets
         Enqueue\Strategy|bool|array|string|null $strategy
     ): Enqueue\JsEnqueue {
 
+        $isEnqueue = $type === 'enqueue';
         $handle = $this->handleForName($name);
+
+        $existing = $this->maybeRegistered($handle, $isEnqueue, self::JS);
+        if ($existing instanceof Enqueue\JsEnqueue) {
+            return $existing;
+        }
+
         [$url, $useMinify] = ($url === null)
             ? $this->assetUrlForEnqueue($name, self::JS)
             : [$this->adjustAbsoluteUrl($url), false];
@@ -669,15 +732,42 @@ class Assets
         $strategy = Enqueue\Strategy::new($strategy);
         $deps = $this->prepareDeps($deps, $url, $useMinify);
 
-        $isEnqueue = $type === 'enqueue';
         /** @var callable $callback */
         $callback = $isEnqueue ? 'wp_enqueue_script' : 'wp_register_script';
 
         $callback($handle, $url, $deps, null, $strategy->toArray());
 
-        return $isEnqueue
+        $enqueued = $isEnqueue
             ? Enqueue\JsEnqueue::new($handle, $strategy)
             : Enqueue\JsEnqueue::newRegistration($handle, $strategy);
+        $this->collection = $this->collection->append($enqueued);
+        $this->setupRemoval();
+
+        return $enqueued;
+    }
+
+    /**
+     * @param string $name
+     * @param 'css'|'js' $type
+     * @param bool $deregister
+     * @return static
+     */
+    private function deregisterOrDequeue(string $name, string $type, bool $deregister): static
+    {
+        $handle = $this->handleForName($name);
+        $existing = $this->maybeRegistered($handle, null, $type);
+        if ($existing instanceof Enqueue\Enqueue) {
+            $deregister ? $existing->deregister() : $existing->dequeue();
+
+            return $this;
+        }
+
+        match ($type) {
+            'css' => $deregister ? wp_deregister_style($handle) : wp_dequeue_script($handle),
+            'js' => $deregister ? wp_deregister_script($handle) : wp_dequeue_script($handle),
+        };
+
+        return $this;
     }
 
     /**
@@ -933,5 +1023,46 @@ class Assets
         }
 
         return null;
+    }
+
+    /**
+     * @param string $handle
+     * @param bool|null $enqueue
+     * @param 'css'|'js' $type
+     * @return Enqueue\Enqueue|null
+     */
+    private function maybeRegistered(string $handle, ?bool $enqueue, string $type): ?Enqueue\Enqueue
+    {
+        $existing = $this->collection()->oneByHandle($handle, $type);
+        if (($existing !== null) || ($enqueue === null)) {
+            if (($existing !== null) && ($enqueue === true) && !$existing->isEnqueued()) {
+                $existing->enqueue();
+            }
+
+            return $existing;
+        }
+
+        if (($type === 'css') && wp_styles()->query($handle)) {
+            wp_dequeue_style($handle);
+            wp_deregister_style($handle);
+        } elseif (($type === 'js') && wp_scripts()->query($handle)) {
+            wp_dequeue_script($handle);
+            wp_deregister_script($handle);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return void
+     */
+    private function setupRemoval(): void
+    {
+        $this->removalConfigured or $this->removalConfigured = add_action(
+            'brain.assets.deregistered',
+            function (Enqueue\Enqueue $enqueue): void {
+                $this->collection = $this->collection->remove($enqueue);
+            }
+        );
     }
 }

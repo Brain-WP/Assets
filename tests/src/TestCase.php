@@ -115,6 +115,85 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
     }
 
     /**
+     * @param string $handle
+     * @param array $extra
+     * @return \_WP_Dependency
+     *
+     * phpcs:disable Inpsyde.CodeQuality.NestingLevel
+     */
+    protected function factoryWpDependency(string $handle, array $extra = []): \_WP_Dependency
+    {
+        // phpcs:enable Inpsyde.CodeQuality.NestingLevel
+        \Mockery::spy(\_WP_Dependency::class);
+
+        // phpcs:disable
+        /** @psalm-suppress PropertyNotSetInConstructor */
+        return new class ($handle, $extra) extends \_WP_Dependency
+        {
+            /** @var string */
+            public $handle;
+            /** @var array */
+            public $extra;
+
+            public function __construct(string $handle, array $extra)
+            {
+                $this->handle = $handle;
+                $this->extra = $extra;
+            }
+
+            public function add_data(mixed $name, mixed $data): bool
+            {
+                if (is_scalar($name)) {
+                    $this->extra[$name] = $data;
+
+                    return true;
+                }
+
+                return false;
+            }
+        };
+        // phpcs:enable
+    }
+
+    /**
+     * @param 'style'|'script' $type
+     * @param array<string, list<list{string, array}|list{string}>> $deps
+     * @return WpAssetsStub
+     */
+    protected function mockWpDependencies(string $type, array $deps = []): WpAssetsStub
+    {
+        assert(in_array($type, ['style', 'script'], true));
+
+        $stub = new WpAssetsStub();
+        foreach ($deps as $status => $elements) {
+            assert(in_array($status, ['registered', 'enqueued', 'to_do', 'done'], true));
+            foreach ($elements as $elementData) {
+                $handle = $elementData[0];
+                $extra = $elementData[1] ?? [];
+                assert(is_string($handle) && ($handle !== ''));
+                assert(is_array($extra));
+                $dep = $this->factoryWpDependency($handle, $extra);
+                $stub->addWpDependencyStub($dep, $status);
+            }
+        }
+
+        Monkey\Functions\expect("wp_{$type}s")->zeroOrMoreTimes()->andReturn($stub);
+        Monkey\Functions\expect("wp_{$type}_is")
+            ->zeroOrMoreTimes()
+            ->andReturnUsing(
+                static function (
+                    string $handle,
+                    string $status = 'enqueued'
+                ) use ($stub): \_WP_Dependency|bool {
+
+                    return $stub->query($handle, $status);
+                }
+            );
+
+        return $stub;
+    }
+
+    /**
      * @param string $url
      * @return array{path: string|null, scheme: string|null, ver: string|null}
      */

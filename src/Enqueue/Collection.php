@@ -43,6 +43,42 @@ class Collection implements \IteratorAggregate, \Countable
     }
 
     /**
+     * @param Enqueue $enqueue
+     * @return static
+     */
+    public function append(Enqueue $enqueue): static
+    {
+        $collection = [];
+        $enqueueId = $this->id($enqueue);
+        foreach ($this->collection as $item) {
+            if ($enqueueId === $this->id($item)) {
+                return clone $this;
+            }
+            $collection[] = $item;
+        }
+        $collection[] = $enqueue;
+
+        return new static($this->assets, ...$collection);
+    }
+
+    /**
+     * @param Enqueue $enqueue
+     * @return static
+     */
+    public function remove(Enqueue $enqueue): static
+    {
+        $collection = [];
+        $enqueueId = $this->id($enqueue);
+        foreach ($this->collection as $item) {
+            if ($this->id($item) !== $enqueueId) {
+                $collection[] = $enqueue;
+            }
+        }
+
+        return new static($this->assets, ...$collection);
+    }
+
+    /**
      * @param string $pattern
      * @param 'css'|'js'|null $type
      * @return static
@@ -152,13 +188,11 @@ class Collection implements \IteratorAggregate, \Countable
     {
         $merged = [];
         foreach ($this->collection as $enqueue) {
-            $id = $enqueue->handle() . ($enqueue->isJs() ? '--js' : '--css');
-            $merged[$id] = $enqueue;
+            $merged[$this->id($enqueue)] = $enqueue;
         }
 
         foreach ($collection->collection as $enqueue) {
-            $id = $enqueue->handle() . ($enqueue->isJs() ? '--js' : '--css');
-            $merged[$id] = $enqueue;
+            $merged[$this->id($enqueue)] = $enqueue;
         }
 
         return static::new($this->assets, ...array_values($merged));
@@ -172,13 +206,11 @@ class Collection implements \IteratorAggregate, \Countable
     {
         $diff = [];
         foreach ($this->collection as $enqueue) {
-            $id = $enqueue->handle() . ($enqueue->isJs() ? '--js' : '--css');
-            $diff[$id] = $enqueue;
+            $diff[$this->id($enqueue)] = $enqueue;
         }
 
         foreach ($collection->collection as $enqueue) {
-            $id = $enqueue->handle() . ($enqueue->isJs() ? '--js' : '--css');
-            unset($diff[$id]);
+            unset($diff[$this->id($enqueue)]);
         }
 
         return static::new($this->assets, ...array_values($diff));
@@ -321,7 +353,7 @@ class Collection implements \IteratorAggregate, \Countable
     /**
      * @param string $name
      * @param 'css'|'js'|null $type
-     * @return Enqueue|null
+     * @return ($type is 'css' ? CssEnqueue|null : ($type is 'js' ? JsEnqueue|null : Enqueue))
      */
     public function oneByName(string $name, ?string $type = null): ?Enqueue
     {
@@ -348,7 +380,7 @@ class Collection implements \IteratorAggregate, \Countable
     /**
      * @param string $handle
      * @param 'css'|'js'|null $type
-     * @return Enqueue|null
+     * @return ($type is 'css' ? CssEnqueue|null : ($type is 'js' ? JsEnqueue|null : Enqueue|null))
      */
     public function oneByHandle(string $handle, ?string $type = null): ?Enqueue
     {
@@ -407,6 +439,16 @@ class Collection implements \IteratorAggregate, \Countable
     {
         foreach ($this->collection as $enqueue) {
             $enqueue->enqueue();
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function dequeue(): void
+    {
+        foreach ($this->collection as $enqueue) {
+            $enqueue->dequeue();
         }
     }
 
@@ -559,6 +601,15 @@ class Collection implements \IteratorAggregate, \Countable
         $flags = str_split($matches[1]);
 
         return array_unique($flags) === $flags;
+    }
+
+    /**
+     * @param Enqueue $enqueue
+     * @return string
+     */
+    private function id(Enqueue $enqueue): string
+    {
+        return $enqueue->handle() . ($enqueue->isJs() ? '--js' : '--css');
     }
 
     /**
